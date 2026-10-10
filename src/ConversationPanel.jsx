@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCharacterPersonality } from './characterPersonalities.js';
 import Icon from './Icon.jsx';
+import MemoryControls from './MemoryControls.jsx';
 
 export function userNotice(message) {
   if (/ELEVENLABS_API_KEY/.test(message)) return /fallback/i.test(message) ? 'ElevenLabs isn’t connected. Using the configured browser voice.' : 'ElevenLabs isn’t connected. You can keep chatting with text.';
@@ -22,6 +23,7 @@ export default function ConversationPanel({ character, currentAvatar, messages, 
   return <section className={`chat-panel ${chatExpanded ? 'chat-expanded' : ''}`} aria-label={`Conversation with ${currentAvatar.name}`}>
     <header className="chat-head">
       <button type="button" className="conversation-toggle" onClick={() => setChatExpanded(!chatExpanded)} aria-expanded={chatExpanded} aria-controls="conversation-log"><span className="chat-identity"><img src={currentAvatar.thumbnailUrl || '/avatars/default.png'} alt="" /><span><strong>{currentAvatar.name}</strong><small>Your conversation</small></span></span><Icon name="chevron" className="chat-chevron" /></button>
+      <MemoryControls />
       <button type="button" className="icon-button" aria-label="Clear conversation" title="Clear conversation" onClick={() => { echo.clear(); setDraft(''); setCopyError(''); }} disabled={!messages.length && !error && !captureBusy && !playing && !thinking}><Icon name="trash" size={17} /></button>
     </header>
     <div id="conversation-log" className="chat-log" ref={scrollRef} role="log" aria-live="polite" aria-relevant="additions text">
@@ -45,6 +47,7 @@ export default function ConversationPanel({ character, currentAvatar, messages, 
       {(echo.speech.notice || echo.speech.analysisNotice) && <p className="voice-notice" role="status">{userNotice(echo.speech.notice || echo.speech.analysisNotice)}</p>}
       {error && <div role="alert" className="error-message"><p>{userNotice(error)}</p><button type="button" className="text-button" disabled={thinking || captureBusy || playing} onClick={() => { if (echo.error) echo.retry(); else if (echo.voice.error) toggleMic(); else if (echo.speech.error) echo.previewVoice(); }}>Try again <Icon name="reset" size={13} /></button></div>}
       {copyError && <p role="status" className="voice-notice">{copyError}</p>}
+      {echo.memoryNotice && <p role="status" className="voice-notice">{echo.memoryNotice}</p>}
     </div>
     <footer className="chat-bottom">
       {playing && <div className="playback-row"><span><i className="playback-dot" />{echo.speech.status === 'starting' ? 'Preparing voice…' : `${currentAvatar.name} is speaking`}</span><button type="button" className="stop-speaking" onClick={echo.stopSpeaking}><Icon name="stop" size={12} />Stop Speaking</button></div>}

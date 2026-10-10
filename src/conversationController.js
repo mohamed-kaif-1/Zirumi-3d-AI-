@@ -23,7 +23,7 @@ export function recentHistory(messages) {
 export function createConversationController({ env = globalThis, onChange, initialAvatarId = 'default' }) {
   let disposed = false, request = null, sequence = 0, resetting = false;
   let voiceEpoch = 0;
-  let snapshot = { state: 'IDLE', messages: [], error: '', connection: 'unchecked', model: '', voice: null, speech: null, avatarId: avatarVoiceId(initialAvatarId), avatarSwitching: false };
+  let snapshot = { state: 'IDLE', messages: [], error: '', memoryNotice: '', connection: 'unchecked', model: '', voice: null, speech: null, avatarId: avatarVoiceId(initialAvatarId), avatarSwitching: false };
   const publish = (patch = {}) => {
     snapshot = { ...snapshot, ...patch };
     if (!disposed && !resetting) onChange(snapshot);
@@ -91,7 +91,7 @@ export function createConversationController({ env = globalThis, onChange, initi
       env.clearTimeout(current.timer);
       request = null;
       markTurn(turnId, 'complete');
-      publish({ messages: [...snapshot.messages, { id: `assistant-${turnId}`, turnId, role: 'assistant', text: result.reply.trim(), status: 'complete', avatarId: current.avatarId }], connection: 'connected', error: '', state: 'IDLE' });
+      publish({ messages: [...snapshot.messages, { id: `assistant-${turnId}`, turnId, role: 'assistant', text: result.reply.trim(), status: 'complete', avatarId: current.avatarId }], connection: 'connected', error: '', memoryNotice: typeof result.memoryNotice === 'string' ? result.memoryNotice : '', state: 'IDLE' });
       if (current.voiceEpoch === voiceEpoch && current.avatarId === snapshot.avatarId && !snapshot.avatarSwitching) speaker.speak(result.reply.trim());
       refreshState();
       return true;
@@ -164,7 +164,7 @@ export function createConversationController({ env = globalThis, onChange, initi
       resetting = true;
       interrupt();
       microphone.reset();
-      snapshot = { ...snapshot, messages: [], error: '', state: 'IDLE' };
+      snapshot = { ...snapshot, messages: [], error: '', memoryNotice: '', state: 'IDLE' };
       resetting = false;
       publish();
     },

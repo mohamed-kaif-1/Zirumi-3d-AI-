@@ -8,10 +8,12 @@ import { DEFAULT_GROQ_BASE_URL, createGroqModelRegistry } from './services/groq.
 import { readProviderConfig } from './providerConfig.js';
 import { createDeepgramProvider } from './services/deepgram.js';
 import { createCartesiaProvider } from './services/cartesia.js';
+import { createMemoryService } from './memory.js';
 
-export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, baseUrl = process.env.GROQ_BASE_URL || DEFAULT_GROQ_BASE_URL, model = process.env.GROQ_STT_MODEL || DEFAULT_STT_MODEL, chatModel = process.env.GROQ_CHAT_MODEL || DEFAULT_CHAT_MODEL, language = process.env.GROQ_STT_LANGUAGE || undefined, fetchImpl, elevenLabsApiKey = process.env.ELEVENLABS_API_KEY, airaVoiceId, ttsModel, ttsFallback, sttProvider = 'groq', ttsProvider = 'elevenlabs', deepgramApiKey = '', deepgramModel = 'nova-3', cartesiaApiKey = '', cartesiaModel = 'sonic-3.6', cartesiaVersion = '2026-08-14', cartesiaVoices = {}, now = Date.now, logger = record => console.info(JSON.stringify(record)), allowedOrigins: configuredOrigins = process.env.ZIRUMI_ALLOWED_ORIGINS } = {}) {
+export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, baseUrl = process.env.GROQ_BASE_URL || DEFAULT_GROQ_BASE_URL, model = process.env.GROQ_STT_MODEL || DEFAULT_STT_MODEL, chatModel = process.env.GROQ_CHAT_MODEL || DEFAULT_CHAT_MODEL, language = process.env.GROQ_STT_LANGUAGE || undefined, fetchImpl, elevenLabsApiKey = process.env.ELEVENLABS_API_KEY, airaVoiceId, ttsModel, ttsFallback, sttProvider = 'groq', ttsProvider = 'elevenlabs', deepgramApiKey = '', deepgramModel = 'nova-3', cartesiaApiKey = '', cartesiaModel = 'sonic-3.6', cartesiaVersion = '2026-08-14', cartesiaVoices = {}, memoryService, mem0ApiKey = process.env.MEM0_API_KEY || '', now = Date.now, logger = record => console.info(JSON.stringify(record)), allowedOrigins: configuredOrigins = process.env.ZIRUMI_ALLOWED_ORIGINS } = {}) {
   if (!['groq', 'deepgram', 'browser'].includes(sttProvider) || !['elevenlabs', 'cartesia', 'browser'].includes(ttsProvider)) throw new ApiError(503, 'Unsupported speech provider configuration.');
   let inFlight = 0;
+  const memory = memoryService || createMemoryService({ apiKey: mem0ApiKey, logger, now });
   const tts = ttsProvider === 'cartesia' ? createCartesiaProvider({ apiKey: cartesiaApiKey, model: cartesiaModel, version: cartesiaVersion, voices: cartesiaVoices, fetchImpl, now }) : ttsProvider === 'browser' ? {
     status: async () => ({ provider: 'Browser', configured: true, fallback: 'none', avatars: Object.fromEntries(['default', 'sky', 'nova', 'ember'].map(id => [id, { provider: 'browser', voiceId: null }])) }),
     synthesize: async () => { throw new ApiError(503, 'Browser speech is explicitly selected. Use the browser playback controls.'); },
@@ -40,7 +42,7 @@ export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, b
       send(200, deepgram ? deepgram.status() : sttProvider === 'browser' ? { configured: true, provider: 'Browser', prefersServer: false, mode: 'browser' } : { configured: Boolean(apiKey?.trim()), provider: 'Groq', model, modelVerified: models.isVerified(model), prefersServer: true, mode: 'prerecorded', audioTypes: AUDIO_TYPES, maxAudioBytes: MAX_AUDIO_BYTES }); return;
     }
     if (request.url === '/api/providers/status' && request.method === 'GET') {
-      send(200, { phase: 1, language: 'en', stt: sttProvider, llm: 'groq', tts: ttsProvider, streamingTranscription: false, streamingPlayback: false, persistentMemory: false, automaticFallback: false }); return;
+      send(200, { phase: 2, language: 'en', stt: sttProvider, llm: 'groq', tts: ttsProvider, streamingTranscription: false, streamingPlayback: false, persistentMemory: memory.configured, automaticFallback: false }); return;
     }
     if (request.url === '/api/chat/status' && request.method === 'GET') {
       send(200, { configured: Boolean(apiKey?.trim()), provider: 'Groq', model: chatModel, modelVerified: models.isVerified(chatModel) }); return;
@@ -49,6 +51,7 @@ export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, b
       try { send(200, await tts.status()); } catch { send(503, { error: 'Speech provider verification is unavailable.' }); }
       return;
     }
+    if (request.url.startsWith('/api/memory/')) { await memory.handle(request, response, send, requestId); return; }
     const isChat = request.url === '/api/chat';
     const isTts = request.url === '/api/tts';
     if ((!isChat && !isTts && request.url !== '/api/transcribe') || request.method !== 'POST') { send(404, { error: 'Endpoint not found.' }); return; }
@@ -92,8 +95,10 @@ export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, b
         let body;
         try { body = JSON.parse(audio.toString('utf8')); } catch { throw new ApiError(400, 'Chat request contains invalid JSON.'); }
         const input = validateChatRequest(body);
+        const context = await memory.context(request, input.message, { signal: abort.signal });
         await models.verify(chatModel, { signal: abort.signal });
-        const result = await generateReplyDetailed(input, { ...groqOptions, model: chatModel, signal: abort.signal });
+        const result = await generateReplyDetailed(input, { ...groqOptions, model: chatModel, memories: context.memories, signal: abort.signal });
+        if (context.notice) result.memoryNotice = context.notice;
         logger({ event: 'ai_request', requestId, kind, status: 200, endpoint: `${DEFAULT_GROQ_BASE_URL}/chat/completions`, ...result.metadata });
         send(200, result); return;
       }

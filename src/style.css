@@ -346,3 +346,14 @@ select { width: 100%; min-width: 0; background: #211A2D; color: #E5DDEF; border:
 @media (prefers-reduced-motion: reduce) {
   *, *:before, *:after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+.memory-open { margin-left: 8px; }
+.memory-content { max-height: 65vh; overflow-y: auto; }
+.memory-form { display: grid; gap: 10px; }
+.memory-form label { font-size: 12px; color: var(--text-muted); }
+.memory-form input, .memory-form select { width: 100%; padding: 10px 12px; color: inherit; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.13); border-radius: 10px; font: inherit; }
+.memory-actions { display: flex; flex-wrap: wrap; gap: 14px; margin: 18px 0; }
+.memory-list { list-style: none; padding: 0; display: grid; gap: 10px; }
+.memory-list li { display: flex; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; padding: 12px; background: rgba(255,255,255,.035); border-radius: 10px; font-size: 12px; }
+.memory-list li span { min-width: 0; }
+.memory-confirm { padding: 12px; border: 1px solid rgba(240,166,190,.25); border-radius: 12px; font-size: 12px; }
+.memory-confirm button + button { margin-left: 16px; }
