@@ -6,6 +6,25 @@ import { mouthOpenForState } from '../src/avatarAnimation.js';
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const ok = (body) => ({ ok: true, json: async () => body });
+test('language switching cancels an old reply, retains completed history and sends the selected native route once', async () => {
+  const f = browserFixture(); let finish;
+  f.env.fetch = async (url, options) => {
+    f.requests.push({ url, options });
+    if (url.includes('/status')) return ok({ configured: true, model: 'fixture' });
+    const body = JSON.parse(options.body);
+    if (body.message === 'Pending') return new Promise(resolve => { finish = resolve; });
+    return ok({ reply: body.language === 'ta-IN' ? 'வணக்கம்!' : 'Hello!' });
+  };
+  const echo = createConversationController({ env: f.env, onChange() {} }); echo.setVoiceEnabled(false);
+  await echo.submit('Hello'); const pending = echo.submit('Pending');
+  const old = f.requests.filter(r => r.url === '/api/chat').at(-1);
+  echo.setLanguage('ta-IN'); assert.equal(old.options.signal.aborted, true);
+  finish(ok({ reply: 'Late English reply' })); await pending;
+  assert.equal(echo.getSnapshot().messages.length, 3); assert.equal(echo.getSnapshot().messages[2].status, 'cancelled');
+  await echo.submit('வணக்கம்'); const body = JSON.parse(f.requests.filter(r => r.url === '/api/chat').at(-1).options.body);
+  assert.equal(body.language, 'ta-IN'); assert.equal(body.history.length, 2); assert.equal(echo.getSnapshot().messages.at(-1).text, 'வணக்கம்!');
+  echo.dispose();
+});
 test('connection checks recover after timeout with a fresh signal', async () => {
   const f = browserFixture();
   const fetch = f.env.fetch; let checks = 0;

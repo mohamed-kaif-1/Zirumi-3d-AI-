@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createConversationController } from './conversationController.js';
 
-const initial = { state: 'IDLE', messages: [], error: '', connection: 'unchecked', model: '', voice: { status: 'idle', permission: 'unknown', engine: 'native', error: '', liveText: '', notice: '', level: 0 }, speech: { supported: true, enabled: true, status: 'idle', selectedVoice: '', voices: [], error: '' } };
+const initial = { language: 'en', state: 'IDLE', messages: [], error: '', connection: 'unchecked', model: '', voice: { status: 'idle', permission: 'unknown', engine: 'native', error: '', liveText: '', notice: '', level: 0 }, speech: { supported: true, enabled: true, status: 'idle', selectedVoice: '', voices: [], error: '' } };
 
 export default function useConversation(initialAvatarId = 'default') {
   const controller = useRef(null);
@@ -43,7 +43,7 @@ export default function useConversation(initialAvatarId = 'default') {
     };
   }, []);
   const methods = useMemo(() => {
-    const names = ['submit', 'retry', 'startListening', 'stopListening', 'cancelRecording', 'cancelRequest', 'stopSpeaking', 'setVoiceEnabled', 'selectVoice', 'selectPreset', 'resetVoice', 'previewVoice', 'beginAvatarSwitch', 'finishAvatarSwitch', 'cancelAvatarSwitch', 'setRate', 'setPitch', 'setVolume', 'setLangFilter', 'playReply', 'clear'];
+    const names = ['setLanguage', 'submit', 'retry', 'startListening', 'stopListening', 'cancelRecording', 'cancelRequest', 'stopSpeaking', 'setVoiceEnabled', 'selectVoice', 'selectPreset', 'resetVoice', 'previewVoice', 'beginAvatarSwitch', 'finishAvatarSwitch', 'cancelAvatarSwitch', 'setRate', 'setPitch', 'setVolume', 'setLangFilter', 'playReply', 'clear'];
     const api = Object.fromEntries(names.map(method => [method, (...args) => controller.current?.[method](...args)]));
     for (const [method, listeners] of Object.entries(subscriptions.current)) {
       api[method] = callback => {

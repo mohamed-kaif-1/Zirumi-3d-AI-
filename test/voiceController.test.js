@@ -42,6 +42,16 @@ function fixture({ supported = true, configured = true, getUserMedia, fetchImpl 
 }
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const result = (text, isFinal) => Object.assign([{ transcript: text }], { isFinal });
+test('Tamil recording uses an explicit Sarvam route, a thirty-second limit and releases capture on language change', async () => {
+  const f = fixture();
+  f.env.fetch = async (url, options) => {
+    if (url.includes('/status')) { assert.match(url, /language=ta-IN/); return Response.json({ configured: true, provider: 'Sarvam', mode: 'prerecorded', maxRecordingSeconds: 30 }); }
+    assert.equal(options.headers['X-Zirumi-Language'], 'ta-IN'); assert.ok(f.track.stops > 0); f.uploads.push({ url, options }); return Response.json({ transcript: 'வணக்கம்' });
+  };
+  f.controller.setLanguage('ta-IN'); await f.controller.start(); assert.equal(f.recognitions.length, 0); assert.match(f.controller.getSnapshot().notice, /30 seconds/);
+  assert.ok([...f.timers.values()].some(t => t.ms === 30000)); f.controller.stop(); await flush(); assert.deepEqual(f.messages, ['வணக்கம்']);
+  await f.controller.start(); f.controller.setLanguage('hi-IN'); await flush(); assert.equal(f.uploads.length, 1); assert.ok(f.track.stops >= 2); assert.equal(f.controller.getSnapshot().status, 'idle'); f.controller.dispose();
+});
 test('Automatic honors the backend Deepgram route, commits once after releasing capture and allows explicit Browser', async () => {
   const f = fixture();
   f.env.fetch = async (url, options) => {

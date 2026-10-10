@@ -19,7 +19,7 @@ export async function readProviderBytes(response, maxBytes) {
 
 export async function speechRequest(url, { provider, apiKey, headers, body, signal, timeoutMs = 45_000, fetchImpl = fetch, consume }) {
   if (!apiKey?.trim()) throw Object.assign(new ApiError(503, `${provider} is not configured. Add ${provider.toUpperCase()}_API_KEY to the backend .env and restart the server.`), { errorCode: 'missing_credentials' });
-  const expected = provider === 'Deepgram' ? 'https://api.deepgram.com' : provider === 'Cartesia' ? 'https://api.cartesia.ai' : '';
+  const expected = provider === 'Deepgram' ? 'https://api.deepgram.com' : provider === 'Cartesia' ? 'https://api.cartesia.ai' : provider === 'Sarvam' ? 'https://api.sarvam.ai' : '';
   const target = new URL(url);
   if (!expected || target.origin !== expected || target.username || target.password || target.hash) throw new ApiError(503, 'Speech requests require the official provider endpoint.');
   const deadline = AbortSignal.timeout(timeoutMs);
@@ -43,8 +43,8 @@ export async function speechRequest(url, { provider, apiKey, headers, body, sign
   }
 }
 
-export async function readProviderJson(response) {
+export async function readProviderJson(response, maxBytes = 512 * 1024) {
   if (!response.headers.get('content-type')?.toLowerCase().includes('application/json')) throw new ApiError(502, 'The speech provider returned invalid JSON data.');
-  const bytes = await readProviderBytes(response, 512 * 1024);
+  const bytes = await readProviderBytes(response, maxBytes);
   try { return JSON.parse(bytes.toString('utf8')); } catch { throw new ApiError(502, 'The speech provider returned invalid JSON data.'); }
 }

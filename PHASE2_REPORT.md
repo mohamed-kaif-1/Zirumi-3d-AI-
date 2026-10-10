@@ -1,7 +1,7 @@
 # ZIRUMI Phase 2 - 2026-10-10
 
 **PHASE PASSED**  
-**ZIRUMI NOT READY - Sarvam Phase 3 remains unfinished**
+**At this checkpoint: Sarvam Phase 3 was pending. Current readiness: [PHASE3_REPORT.md](PHASE3_REPORT.md).**
 
 Mem0 is integrated using the official hosted `mem0ai` SDK 3.3.1. Memory starts
 off for every browser identity and stores only a short preference explicitly

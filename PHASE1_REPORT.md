@@ -1,14 +1,15 @@
 # ZIRUMI Phase 1 — 2026-10-10
 
 **PHASE PASSED — automated mandatory functional checks**  
-**ZIRUMI NOT READY**
+**At this checkpoint: Phases 2 and 3 were pending. Current readiness: [PHASE3_REPORT.md](PHASE3_REPORT.md).**
 
 Phase 1 is implemented inside `echo-avatar-day1/Zirumi`. The real Deepgram →
 Groq → Cartesia browser conversation passed with a spoken virtual microphone,
 actual provider responses and actual VRM playback. All four assigned voices
 generated real speech and drove mouth animation. Physical microphone quality and
 a human listening review remain unverified. Phase 2 Mem0 may now proceed; Phase 3
-Sarvam remains gated on Phase 2. The complete three-phase system is not ready.
+Sarvam remained gated on Phase 2 at this historical checkpoint. The final report
+documents the subsequently completed phases.
 
 ## Latest live verification
 

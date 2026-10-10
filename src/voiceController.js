@@ -15,6 +15,8 @@ export function createVoiceController({ env = globalThis, onChange, onTranscript
   const Recognition = env.SpeechRecognition || env.webkitSpeechRecognition;
   let snapshot = { status: 'idle', permission: 'unknown', engine: Recognition ? 'native' : 'server', liveText: '', error: '', notice: '', level: 0 };
   let session = null;
+  let language = 'en';
+  const healthUrl = () => '/api/transcription/status' + (language === 'en' ? '' : '?language=' + language);
   let nativeUnavailable = !Recognition;
   let disposed = false;
   const update = (patch) => {
@@ -126,7 +128,7 @@ export function createVoiceController({ env = globalThis, onChange, onTranscript
     }
     const mimeType = RECORDING_TYPES.find((type) => env.MediaRecorder.isTypeSupported(type));
     if (!mimeType) throw new Error('This browser cannot record a supported WebM or Ogg audio format. Use Chrome, Edge, Brave, or typed input.');
-    const health = await env.fetch('/api/transcription/status', { signal: s.abort.signal });
+    const health = await env.fetch(healthUrl(), { signal: s.abort.signal });
     if (!health.ok) throw new Error('The transcription backend is unavailable. Start npm run server, or type below.');
     const config = await health.json();
     if (!config.configured) throw new Error(`${config.provider || 'Server'} transcription is not configured in the backend. Configure its API key and restart the server. Typed input remains available.`);
@@ -164,7 +166,7 @@ export function createVoiceController({ env = globalThis, onChange, onTranscript
       timer(s, () => cancel('Transcription timed out. Try a shorter recording.'), 50_000);
       try {
         const response = await env.fetch('/api/transcribe', {
-          method: 'POST', headers: { 'Content-Type': audio.type }, body: audio, signal: s.abort.signal,
+          method: 'POST', headers: { 'Content-Type': audio.type, ...(language !== 'en' ? { 'X-Zirumi-Language': language } : {}) }, body: audio, signal: s.abort.signal,
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'The transcription provider failed. Try again or type below.');
@@ -174,22 +176,23 @@ export function createVoiceController({ env = globalThis, onChange, onTranscript
     };
     recorder.start(250);
     started(s);
-    update({ status: 'listening', notice: `Recording for ${config.provider || 'server'} transcription. Stop listening to convert your speech; maximum 45 seconds.` });
+    update({ status: 'listening', notice: `Recording for ${config.provider || 'server'} transcription. Stop listening to convert your speech; maximum ${config.maxRecordingSeconds || 45} seconds.` });
     meter(s);
-    timer(s, () => stop(), 45_000);
+    timer(s, () => stop(), (config.maxRecordingSeconds || 45) * 1000);
   }
   async function start(mode = 'auto') {
     if (disposed || session) return;
     const s = { timers: new Set(), abort: new AbortController(), finals: new Map(), stopping: false };
     session = s; // Lock before any async work or native onstart event.
-    let engine = mode === 'native' && Recognition ? 'native' : mode === 'server' || nativeUnavailable ? 'server' : 'native';
+    let engine = language !== 'en' ? 'server' : mode === 'native' && Recognition ? 'native' : mode === 'server' || nativeUnavailable ? 'server' : 'native';
     update({ status: 'starting', engine, liveText: '', error: '', notice: '' });
     s.startupTimer = timer(s, () => cancel('Microphone startup timed out. Check site permissions and try again.'), 30_000);
     try {
+      if (mode === 'native' && language !== 'en') throw new Error('Choose Automatic or Recorded speech for this language. Sarvam handles the selected Indian language.');
       if (mode === 'native' && !Recognition) throw new Error('Browser speech recognition is unavailable. Choose Recorded speech or use typed input.');
       if (mode === 'auto' && env.fetch && !nativeUnavailable) {
         // Backend routing decides Automatic. Explicit Browser remains available.
-        const response = await env.fetch('/api/transcription/status', { signal: s.abort.signal });
+        const response = await env.fetch(healthUrl(), { signal: s.abort.signal });
         if (!response.ok) throw new Error('The transcription backend is unavailable. Choose Browser recognition in settings or use typed input.');
         const config = await response.json();
         if (!active(s)) return;
@@ -240,6 +243,7 @@ export function createVoiceController({ env = globalThis, onChange, onTranscript
     finish(s, '', error);
   }
   return {
+    setLanguage(value) { cancel(); language = value; update({ language, provider: value === 'en' ? null : 'Sarvam', model: null, error: '', notice: '' }); },
     start, stop, cancel, getSnapshot: () => snapshot,
     reset() { cancel(); update({ status: 'idle', error: '', notice: '', liveText: '', level: 0 }); },
     setPermission: (permission) => update({ permission }),

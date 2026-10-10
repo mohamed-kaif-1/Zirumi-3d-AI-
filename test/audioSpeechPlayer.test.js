@@ -4,6 +4,21 @@ import { createAudioSpeechPlayer } from '../src/audioSpeechPlayer.js';
 import { createSpeechController } from '../src/speechController.js';
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
+test('language changes discard stale voice metadata and cached previews never cross languages', async () => {
+  const f = fixture(); let release;
+  f.env.fetch = async (url, options) => {
+    if (url === '/api/tts/status') return new Promise(resolve => { release = resolve; });
+    if (url.includes('/status?')) return Response.json({ provider: 'Sarvam', model: 'bulbul:v3', fallback: 'none', avatars: { sky: { name: 'ritu', voiceId: 'ritu' } } });
+    f.requests.push({ url, options }); return new Response('fixture', { headers: { 'content-type': 'audio/wav' } });
+  };
+  const speaker = createSpeechController({ env: f.env, initialAvatarId: 'sky', onChange() {} });
+  const old = speaker.checkTts(); speaker.setLanguage('ta-IN'); await speaker.checkTts();
+  release(Response.json({ provider: 'Cartesia', avatars: { sky: { voiceId: 'old-English' } } })); await old;
+  assert.equal(speaker.getSnapshot().profiles.sky.provider, 'sarvam'); assert.equal(speaker.getSnapshot().profiles.sky.providerVoiceId, 'ritu');
+  speaker.preview(); await flush(); assert.equal(JSON.parse(f.requests[0].options.body).language, 'ta-IN'); assert.match(JSON.parse(f.requests[0].options.body).text, /வணக்கம்/);
+  speaker.setLanguage('hi-IN'); await speaker.checkTts(); speaker.preview(); await flush();
+  assert.equal(f.requests.length, 2); assert.equal(JSON.parse(f.requests[1].options.body).language, 'hi-IN'); speaker.dispose();
+});
 test('Cartesia WAV uses the same actual playback/RMS owner and previews never substitute browser voices', async () => {
   const f = fixture(), spoken = [];
   f.env.speechSynthesis = { getVoices: () => [], addEventListener() {}, removeEventListener() {}, cancel() {}, speak(u) { spoken.push(u); } };

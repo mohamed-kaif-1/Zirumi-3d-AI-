@@ -2,6 +2,7 @@ import { ApiError } from './transcription.js';
 import { createVoiceRegistry, isRegisteredTtsAvatar, normalizeTtsAvatarId } from './voiceRegistry.js';
 import { getAvatarVoiceProfile } from '../src/avatarVoiceProfiles.js';
 import { VOICE_PRESETS } from '../src/voicePresets.js';
+import { validateLanguage } from './languages.js';
 
 export const MAX_TTS_BYTES = 32 * 1024;
 export const MAX_TTS_TEXT = 6000;
@@ -10,14 +11,14 @@ export const DEFAULT_TTS_MODEL = 'eleven_multilingual_v2';
 export const TTS_FORMAT = 'mp3_44100_128';
 
 export function validateTtsRequest(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !['text', 'avatarId', 'rate', 'presetId'].includes(key))) throw new ApiError(400, 'Expected text and an allowlisted avatarId.');
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !['text', 'avatarId', 'rate', 'presetId', 'language'].includes(key))) throw new ApiError(400, 'Expected text and an allowlisted avatarId.');
   if (!isRegisteredTtsAvatar(body.avatarId)) throw new ApiError(400, 'Unknown character voice.');
   if (typeof body.text !== 'string' || !body.text.trim() || body.text.length > MAX_TTS_TEXT) throw new ApiError(400, 'Speech text must contain 1–6,000 characters.');
   if (body.rate !== undefined && (typeof body.rate !== 'number' || !Number.isFinite(body.rate) || body.rate < 0.75 || body.rate > 1.2)) throw new ApiError(400, 'Speech rate must be between 0.75 and 1.20.');
   if (body.presetId !== undefined && !VOICE_PRESETS.some(p => p.id === body.presetId)) throw new ApiError(400, 'Unknown voice tone preset.');
   const avatarId = normalizeTtsAvatarId(body.avatarId);
   const profile = getAvatarVoiceProfile(avatarId);
-  return { text: body.text.trim(), avatarId, rate: body.rate ?? profile.rate, presetId: body.presetId ?? profile.preset };
+  return { text: body.text.trim(), avatarId, rate: body.rate ?? profile.rate, presetId: body.presetId ?? profile.preset, ...(body.language === undefined ? {} : { language: validateLanguage(body.language) }) };
 }
 
 async function providerFailure(response) {

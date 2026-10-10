@@ -4,19 +4,19 @@ Your World. Your Companion. React/Vite and Three.js companion studio with four
 female VRM characters, session conversation memory, voice input, speech output,
 natural animation and interactive hand IK.
 
-**Groq handles conversation.** Phase 1 adds Deepgram prerecorded English input
-and Cartesia WAV output through the existing microphone and audio controllers.
-The local `.env` explicitly selects Deepgram input and retains ElevenLabs output
-while Cartesia credentials and voices are pending. New-install defaults select
-Deepgram/Cartesia. Providers never change silently after an error. See
-[PHASE1_REPORT.md](PHASE1_REPORT.md) and [PHASE1_SETUP.md](PHASE1_SETUP.md) for the
-current verification gate. Mem0 and Sarvam are not enabled before it passes.
+**Groq handles conversation.** English uses real Deepgram prerecorded speech
+recognition and Cartesia WAV output. Tamil, Hindi and Indian English use Sarvam
+speech recognition and synthesis, selected explicitly in Settings. All four
+characters have distinct documented voices. Optional Mem0 memory stores only
+preferences approved in Memory controls, scoped to an opaque backend identity.
+Providers never change silently after an error. Legacy ElevenLabs, Groq Whisper
+and browser speech remain available through explicit English configuration.
 
-See [GROQ_FREE_REPAIR_REPORT.md](GROQ_FREE_REPAIR_REPORT.md) for current verification
-and limits, [GROQ_SETUP.md](GROQ_SETUP.md) for credentials and live checks, and
-[DEPLOYMENT.md](DEPLOYMENT.md) for production hosting requirements. Earlier
-integration and voice reports are historical and do not describe the active AI
-provider or current names.
+See [PHASE1_REPORT.md](PHASE1_REPORT.md), [PHASE2_REPORT.md](PHASE2_REPORT.md), and
+[PHASE3_REPORT.md](PHASE3_REPORT.md) for actual verification and checkpoints.
+Setup: [PHASE1_SETUP.md](PHASE1_SETUP.md), [PHASE2_SETUP.md](PHASE2_SETUP.md), and
+[PHASE3_SETUP.md](PHASE3_SETUP.md). Public hosting requirements remain in
+[DEPLOYMENT.md](DEPLOYMENT.md). Earlier migration reports are historical.
 
 ## Run on Windows
 
@@ -45,7 +45,7 @@ alone does not host the API.
 | Mira | `nova` | Calm, elegant, intelligent | `CARTESIA_VOICE_MIRA` |
 | Zyra | `ember` | Energetic, confident, futuristic | `CARTESIA_VOICE_ZYRA` |
 
-Assignments are currently pending account verification. Exact legacy ElevenLabs
+All four English Cartesia assignments passed real synthesis and browser playback. Exact legacy ElevenLabs
 identities remain in `server/voiceRegistry.js`; select that provider explicitly
 to retain its existing voices. Aira retains browser speech on that legacy route
 until `AIRA_VOICE_ID` is configured.
@@ -83,6 +83,10 @@ models are CC0. Self-hosted Manrope and Outfit include their OFL notices in
 | `CARTESIA_API_KEY` / `CARTESIA_TTS_MODEL` | Server-only credential / `sonic-3.6` |
 | `CARTESIA_API_VERSION` | Pinned REST contract `2026-08-14` |
 | `CARTESIA_VOICE_AIRA/LUNA/MIRA/ZYRA` | Four distinct verified catalog UUIDs; no fabricated defaults |
+| `MEM0_API_KEY` | Optional hosted memory; every browser must explicitly opt in |
+| `SARVAM_API_KEY` / `SARVAM_STT_MODEL` | Server-only Indian-language speech / `saaras:v4` |
+| `SARVAM_TTS_MODEL_TA/HI/EN` | Explicit `bulbul:v3` / `bulbul:v4-flash` / `bulbul:v4-flash` |
+| `GROQ_CHAT_MODEL_TA/HI/EN` | Optional explicit per-language alternative models |
 
 Keep credentials in the ignored backend `.env` or deployment secret store.
 Never use a `VITE_` prefix. Node reads `.env` at startup; process environment
@@ -104,11 +108,12 @@ dependency for bounded DNS caching. It is absent from the frontend bundle.
    upload when available; Whisper no-speech scores supplement this check.
 4. `/api/chat` validates the selected ID and at most six completed user/assistant
    pairs, then calls `/chat/completions` with chronological roles and a
-   server-controlled character instruction. Failed, pending and cancelled turns
+   server-controlled character instruction, explicit native-language request and at
+   most three relevant consented Mem0 facts. Failed, pending and cancelled turns
    never enter memory. Clear aborts work and resets context. No server conversation
    store or provider-side response chain is used.
 5. The reply enters the existing speech/animation pipeline. `/api/tts` resolves
-   configured Cartesia UUIDs or legacy ElevenLabs IDs on the server. An explicit
+   configured Cartesia UUIDs, selected Sarvam speakers or legacy ElevenLabs IDs on the server. An explicit
    browser route also remains available. Actual MP3/WAV playing/ended events control speech state and Web
    Audio amplitude drives the mouth; browser speech uses its existing lifecycle.
 6. Stop, new speech, switching and unmount clean up audio and invalidate stale

@@ -1,3 +1,4 @@
+import { LANGUAGES } from './languages.js';
 import { useEffect, useRef, useState } from 'react';
 import { getCharacterPersonality } from './characterPersonalities.js';
 import Icon from './Icon.jsx';
@@ -22,7 +23,7 @@ export default function ConversationPanel({ character, currentAvatar, messages, 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: reducedMotion ? 'auto' : 'smooth' }); }, [messages, liveText, thinking, processing, error, chatExpanded, reducedMotion, scrollRef]);
   return <section className={`chat-panel ${chatExpanded ? 'chat-expanded' : ''}`} aria-label={`Conversation with ${currentAvatar.name}`}>
     <header className="chat-head">
-      <button type="button" className="conversation-toggle" onClick={() => setChatExpanded(!chatExpanded)} aria-expanded={chatExpanded} aria-controls="conversation-log"><span className="chat-identity"><img src={currentAvatar.thumbnailUrl || '/avatars/default.png'} alt="" /><span><strong>{currentAvatar.name}</strong><small>Your conversation</small></span></span><Icon name="chevron" className="chat-chevron" /></button>
+      <button type="button" className="conversation-toggle" onClick={() => setChatExpanded(!chatExpanded)} aria-expanded={chatExpanded} aria-controls="conversation-log"><span className="chat-identity"><img src={currentAvatar.thumbnailUrl || '/avatars/default.png'} alt="" /><span><strong>{currentAvatar.name}</strong><small>Your conversation · {LANGUAGES[echo.language || 'en'].label}</small></span></span><Icon name="chevron" className="chat-chevron" /></button>
       <MemoryControls />
       <button type="button" className="icon-button" aria-label="Clear conversation" title="Clear conversation" onClick={() => { echo.clear(); setDraft(''); setCopyError(''); }} disabled={!messages.length && !error && !captureBusy && !playing && !thinking}><Icon name="trash" size={17} /></button>
     </header>

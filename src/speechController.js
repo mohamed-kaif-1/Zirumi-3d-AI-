@@ -2,6 +2,7 @@
 
 import { ELEVENLABS_VOICES, isElevenLabsAvatar } from './elevenLabsVoices.js';
 import { createAudioSpeechPlayer } from './audioSpeechPlayer.js';
+import { LANGUAGES } from './languages.js';
 
 // One owner for reply and preview playback. Every cancellation invalidates callbacks.
 export function createSpeechController({ env = globalThis, onChange, initialAvatarId = 'default' }) {
@@ -16,9 +17,10 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
   const globalBoundaryListeners = new Set();
   const amplitudeListeners = new Set();
   let ttsStatus = null;
-  const cloudProvider = id => ttsStatus?.provider === 'Cartesia' ? 'cartesia' : ttsStatus?.provider === 'Browser' ? 'browser' : isElevenLabsAvatar(id) || Boolean(ttsStatus?.avatars?.[id]?.voiceId) ? 'elevenlabs' : 'browser';
+  let language = 'en', metadataVersion = 0;
+  const cloudProvider = id => language !== 'en' ? 'sarvam' : ttsStatus?.provider === 'Cartesia' ? 'cartesia' : ttsStatus?.provider === 'Browser' ? 'browser' : isElevenLabsAvatar(id) || Boolean(ttsStatus?.avatars?.[id]?.voiceId) ? 'elevenlabs' : 'browser';
   const usesCloud = id => cloudProvider(id) !== 'browser';
-  const providerName = id => cloudProvider(id) === 'cartesia' ? 'Cartesia' : 'ElevenLabs';
+  const providerName = id => cloudProvider(id) === 'sarvam' ? 'Sarvam' : cloudProvider(id) === 'cartesia' ? 'Cartesia' : 'ElevenLabs';
   let fallbackReplay = null;
   let snapshot = { enabled: true, supported, status: 'idle', error: '', avatarId: avatarVoiceId(initialAvatarId), selectedVoice: '', selectedVoiceKey: '', voices: [], profiles: {}, previewAvatarId: null, rate: 1, pitch: 1, volume: 1, langFilter: 'all' };
   const update = patch => { snapshot = { ...snapshot, ...patch }; if (!disposed) onChange(snapshot); };
@@ -29,7 +31,7 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
       const fallbackVoice = env.Audio && isElevenLabsAvatar(id) && originalAssignment.automatic && installed.find(v => /zira|samantha|hazel|susan|victoria|karen|emma|aria|jenny|salli/i.test(v.name) && v.lang.toLowerCase().startsWith('en'));
       const assignment = fallbackVoice ? { ...originalAssignment, voice: fallbackVoice } : originalAssignment;
       return [id, {
-      ...preferences[id], ...assignment, voice: voiceIdentity(assignment.voice), voiceName: usesCloud(id) ? `${providerName(id)} · ${ttsStatus?.avatars?.[id]?.name || 'Unverified'}` : assignment.voice?.name || 'Browser default', browserVoiceName: assignment.voice?.name || 'Browser default', voiceKey: assignment.voice ? voiceOptionId(assignment.voice) : '', profile: getAvatarVoiceProfile(id), provider: cloudProvider(id), providerVoiceId: cloudProvider(id) === 'cartesia' ? ttsStatus?.avatars?.[id]?.voiceId || null : ttsStatus?.avatars?.[id]?.voiceId || ELEVENLABS_VOICES[id]?.voiceId,
+      ...preferences[id], ...assignment, voice: voiceIdentity(assignment.voice), voiceName: usesCloud(id) ? `${providerName(id)} · ${ttsStatus?.avatars?.[id]?.name || 'Unverified'}` : assignment.voice?.name || 'Browser default', browserVoiceName: assignment.voice?.name || 'Browser default', voiceKey: assignment.voice ? voiceOptionId(assignment.voice) : '', profile: getAvatarVoiceProfile(id), provider: cloudProvider(id), providerVoiceId: ['cartesia', 'sarvam'].includes(cloudProvider(id)) ? ttsStatus?.avatars?.[id]?.voiceId || null : ttsStatus?.avatars?.[id]?.voiceId || ELEVENLABS_VOICES[id]?.voiceId,
       shared: usesCloud(id) ? false : assignment.shared,
       notice: usesCloud(id) ? ttsStatus?.avatars?.[id]?.error || (ttsStatus ? '' : 'Speech provider verification pending.') : assignment.notice,
       metadata: ttsStatus?.avatars?.[id],
@@ -52,7 +54,7 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
     onFailure: message => {
       const replay = fallbackReplay; fallbackReplay = null;
       if (disposed || !replay) return;
-      if (!replay.options.preview && ttsStatus?.fallback === 'browser' && browserSupported) {
+      if (language === 'en' && !replay.options.preview && ttsStatus?.fallback === 'browser' && browserSupported) {
         speakBrowser(replay.text, { ...replay.options, manual: true });
         update({ notice: `${message} Using the configured browser fallback: ${snapshot.playbackVoice?.name || 'Browser default'}.` });
       } else {
@@ -62,22 +64,24 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
       }
     },
   });
-  const metadataAbort = new AbortController();
+  let metadataAbort = new AbortController();
   let metadataLoading = null;
   function checkTts() {
     if (!audioPlayer.supported) return Promise.resolve();
     if (metadataLoading) return metadataLoading;
-    metadataLoading = loadTts().finally(() => { metadataLoading = null; });
+    const promise = loadTts().finally(() => { if (metadataLoading === promise) metadataLoading = null; });
+    metadataLoading = promise;
     return metadataLoading;
   }
   async function loadTts() {
+    const version = metadataVersion;
     const deadline = new AbortController();
     const timer = env.setTimeout(() => deadline.abort(), 25_000);
     try {
-      const response = await env.fetch('/api/tts/status', { signal: AbortSignal.any([metadataAbort.signal, deadline.signal]) });
+      const response = await env.fetch('/api/tts/status' + (language === 'en' ? '' : '?language=' + language), { signal: AbortSignal.any([metadataAbort.signal, deadline.signal]) });
       const result = await response.json();
-      if (!disposed && response.ok && ['ElevenLabs', 'Cartesia', 'Browser'].includes(result.provider)) { ttsStatus = result; update({ ...profileSnapshot(), tts: result }); }
-    } catch { if (!disposed) update({ notice: 'Speech provider verification could not reach the backend.' }); }
+      if (!disposed && version === metadataVersion && response.ok && ['ElevenLabs', 'Cartesia', 'Browser', 'Sarvam'].includes(result.provider)) { ttsStatus = result; update({ ...profileSnapshot(), tts: result }); }
+    } catch { if (!disposed && version === metadataVersion) update({ notice: 'Speech provider verification could not reach the backend.' }); }
     finally { env.clearTimeout(timer); }
   }
 
@@ -156,8 +160,8 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
     if (!audioPlayer.supported) { update({ status: 'error', error: `${providerName(avatarId)} audio playback is unavailable in this browser.`, previewAvatarId: null }); return false; }
     const identity = snapshot.profiles[avatarId];
     fallbackReplay = { text, options: { ...options, avatarId } };
-    update({ previewAvatarId: options.preview ? avatarId : null, playbackAvatarId: avatarId, playbackVoice: { voiceURI: identity.providerVoiceId, name: ttsStatus?.avatars?.[avatarId]?.name || `${identity.profile.name} (unverified)`, lang: 'en' } });
-    return audioPlayer.play(text.trim(), { avatarId, rate: identity.rate, presetId: identity.presetId, volume: identity.volume, provider: identity.provider, preview: Boolean(options.preview), voiceIdentity: `${identity.provider}:${identity.providerVoiceId}:${ttsStatus?.model || ''}` });
+    update({ previewAvatarId: options.preview ? avatarId : null, playbackAvatarId: avatarId, playbackVoice: { voiceURI: identity.providerVoiceId, name: ttsStatus?.avatars?.[avatarId]?.name || `${identity.profile.name} (unverified)`, lang: language } });
+    return audioPlayer.play(text.trim(), { avatarId, rate: identity.rate, presetId: identity.presetId, volume: identity.volume, provider: identity.provider, language, preview: Boolean(options.preview), voiceIdentity: `${identity.provider}:${identity.providerVoiceId}:${ttsStatus?.model || ''}` });
   }
   function updateSettings(patch, id = snapshot.avatarId) {
     id = avatarVoiceId(id);
@@ -171,10 +175,15 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
   return {
     speak, cancel, getSnapshot: () => snapshot,
     checkTts,
+    setLanguage(value) {
+      if (!Object.hasOwn(LANGUAGES, value) || value === language) return;
+      cancel(); metadataVersion++; metadataAbort.abort(); metadataAbort = new AbortController(); metadataLoading = null;
+      language = value; ttsStatus = null; update({ ...profileSnapshot(), tts: null, language }); checkTts();
+    },
     setAvatar(id) {
       cancel(); snapshot = { ...snapshot, avatarId: avatarVoiceId(id), langFilter: 'all' }; update(profileSnapshot());
     },
-    preview(id = snapshot.avatarId) { checkTts(); return speak(getAvatarVoiceProfile(id).sample, { manual: true, preview: true, avatarId: id }); },
+    preview(id = snapshot.avatarId) { checkTts(); return speak(LANGUAGES[language].sample?.[id] || getAvatarVoiceProfile(id).sample, { manual: true, preview: true, avatarId: id }); },
     setEnabled(enabled) { if (!enabled) cancel(); update({ enabled: Boolean(enabled) }); },
     selectVoice(id) {
       const voice = installed.find(v => voiceOptionId(v) === id || v.voiceURI === id);
@@ -188,7 +197,7 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
     setVolume(value) { updateSettings({ volume: Number(value) }); },
     setLangFilter(lang) { cancel(); update({ langFilter: lang || 'all' }); },
     subscribeBoundary(fn) { globalBoundaryListeners.add(fn); return () => globalBoundaryListeners.delete(fn); },
-    subscribeAmplitude(fn) { amplitudeListeners.add(fn); fn(['elevenlabs', 'cartesia'].includes(snapshot.playbackEngine) ? 0 : null); return () => amplitudeListeners.delete(fn); },
+    subscribeAmplitude(fn) { amplitudeListeners.add(fn); fn(['elevenlabs', 'cartesia', 'sarvam'].includes(snapshot.playbackEngine) ? 0 : null); return () => amplitudeListeners.delete(fn); },
     dispose() { disposed = true; metadataAbort.abort(); cancel(); audioPlayer.dispose(); synth?.removeEventListener('voiceschanged', onVoices); globalBoundaryListeners.clear(); amplitudeListeners.clear(); },
   };
 }

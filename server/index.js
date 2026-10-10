@@ -9,11 +9,14 @@ import { readProviderConfig } from './providerConfig.js';
 import { createDeepgramProvider } from './services/deepgram.js';
 import { createCartesiaProvider } from './services/cartesia.js';
 import { createMemoryService } from './memory.js';
+import { createSarvamProvider } from './services/sarvam.js';
+import { validateLanguage } from './languages.js';
 
-export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, baseUrl = process.env.GROQ_BASE_URL || DEFAULT_GROQ_BASE_URL, model = process.env.GROQ_STT_MODEL || DEFAULT_STT_MODEL, chatModel = process.env.GROQ_CHAT_MODEL || DEFAULT_CHAT_MODEL, language = process.env.GROQ_STT_LANGUAGE || undefined, fetchImpl, elevenLabsApiKey = process.env.ELEVENLABS_API_KEY, airaVoiceId, ttsModel, ttsFallback, sttProvider = 'groq', ttsProvider = 'elevenlabs', deepgramApiKey = '', deepgramModel = 'nova-3', cartesiaApiKey = '', cartesiaModel = 'sonic-3.6', cartesiaVersion = '2026-08-14', cartesiaVoices = {}, memoryService, mem0ApiKey = process.env.MEM0_API_KEY || '', now = Date.now, logger = record => console.info(JSON.stringify(record)), allowedOrigins: configuredOrigins = process.env.ZIRUMI_ALLOWED_ORIGINS } = {}) {
+export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, baseUrl = process.env.GROQ_BASE_URL || DEFAULT_GROQ_BASE_URL, model = process.env.GROQ_STT_MODEL || DEFAULT_STT_MODEL, chatModel = process.env.GROQ_CHAT_MODEL || DEFAULT_CHAT_MODEL, language = process.env.GROQ_STT_LANGUAGE || undefined, fetchImpl, elevenLabsApiKey = process.env.ELEVENLABS_API_KEY, airaVoiceId, ttsModel, ttsFallback, sttProvider = 'groq', ttsProvider = 'elevenlabs', deepgramApiKey = '', deepgramModel = 'nova-3', cartesiaApiKey = '', cartesiaModel = 'sonic-3.6', cartesiaVersion = '2026-08-14', cartesiaVoices = {}, memoryService, mem0ApiKey = process.env.MEM0_API_KEY || '', sarvamProvider, sarvamApiKey = process.env.SARVAM_API_KEY || '', sarvamSttModel = process.env.SARVAM_STT_MODEL || 'saaras:v4', sarvamVoices = Object.fromEntries([['ta-IN', 'TA'], ['hi-IN', 'HI'], ['en-IN', 'EN']].map(([locale, suffix]) => [locale, Object.fromEntries([['default', 'AIRA'], ['sky', 'LUNA'], ['nova', 'MIRA'], ['ember', 'ZYRA']].flatMap(([id, name]) => process.env['SARVAM_VOICE_' + name + '_' + suffix] ? [[id, process.env['SARVAM_VOICE_' + name + '_' + suffix]]] : []))])), sarvamModels = { 'ta-IN': process.env.SARVAM_TTS_MODEL_TA || 'bulbul:v3', 'hi-IN': process.env.SARVAM_TTS_MODEL_HI || process.env.SARVAM_TTS_MODEL || 'bulbul:v4-flash', 'en-IN': process.env.SARVAM_TTS_MODEL_EN || process.env.SARVAM_TTS_MODEL || 'bulbul:v4-flash' }, chatModels = { 'ta-IN': process.env.GROQ_CHAT_MODEL_TA, 'hi-IN': process.env.GROQ_CHAT_MODEL_HI, 'en-IN': process.env.GROQ_CHAT_MODEL_EN }, now = Date.now, logger = record => console.info(JSON.stringify(record)), allowedOrigins: configuredOrigins = process.env.ZIRUMI_ALLOWED_ORIGINS } = {}) {
   if (!['groq', 'deepgram', 'browser'].includes(sttProvider) || !['elevenlabs', 'cartesia', 'browser'].includes(ttsProvider)) throw new ApiError(503, 'Unsupported speech provider configuration.');
   let inFlight = 0;
   const memory = memoryService || createMemoryService({ apiKey: mem0ApiKey, logger, now });
+  const sarvam = sarvamProvider || createSarvamProvider({ apiKey: sarvamApiKey, sttModel: sarvamSttModel, models: sarvamModels, voices: sarvamVoices, fetchImpl, now });
   const tts = ttsProvider === 'cartesia' ? createCartesiaProvider({ apiKey: cartesiaApiKey, model: cartesiaModel, version: cartesiaVersion, voices: cartesiaVoices, fetchImpl, now }) : ttsProvider === 'browser' ? {
     status: async () => ({ provider: 'Browser', configured: true, fallback: 'none', avatars: Object.fromEntries(['default', 'sky', 'nova', 'ember'].map(id => [id, { provider: 'browser', voiceId: null }])) }),
     synthesize: async () => { throw new ApiError(503, 'Browser speech is explicitly selected. Use the browser playback controls.'); },
@@ -38,25 +41,35 @@ export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, b
     if (!/^(127\.0\.0\.1|localhost):\d+$/.test(request.headers.host || '') || (request.headers.origin && !allowedOrigins.has(request.headers.origin))) {
       send(403, { error: 'This endpoint only accepts local ZIRUMI requests.' }); return;
     }
-    if (request.url === '/api/transcription/status' && request.method === 'GET') {
+    let url;
+    try { url = new URL(request.url, 'http://localhost'); }
+    catch { send(400, { error: 'Invalid API URL.' }); return; }
+    const route = url.pathname;
+    let selectedLanguage;
+    try { selectedLanguage = validateLanguage(url.searchParams.get('language') || request.headers['x-zirumi-language'] || 'en'); }
+    catch (error) { send(400, { error: error.message }); return; }
+    let regional = selectedLanguage !== 'en';
+    if (route === '/api/transcription/status' && request.method === 'GET') {
+      if (regional) { send(200, sarvam.transcriptionStatus(selectedLanguage)); return; }
       send(200, deepgram ? deepgram.status() : sttProvider === 'browser' ? { configured: true, provider: 'Browser', prefersServer: false, mode: 'browser' } : { configured: Boolean(apiKey?.trim()), provider: 'Groq', model, modelVerified: models.isVerified(model), prefersServer: true, mode: 'prerecorded', audioTypes: AUDIO_TYPES, maxAudioBytes: MAX_AUDIO_BYTES }); return;
     }
-    if (request.url === '/api/providers/status' && request.method === 'GET') {
-      send(200, { phase: 2, language: 'en', stt: sttProvider, llm: 'groq', tts: ttsProvider, streamingTranscription: false, streamingPlayback: false, persistentMemory: memory.configured, automaticFallback: false }); return;
+    if (route === '/api/providers/status' && request.method === 'GET') {
+      send(200, { phase: 3, language: selectedLanguage, languages: ['en', 'ta-IN', 'hi-IN', 'en-IN'], stt: regional ? 'sarvam' : sttProvider, llm: 'groq', tts: regional ? 'sarvam' : ttsProvider, automaticLanguageDetection: false, streamingTranscription: false, streamingPlayback: false, persistentMemory: memory.configured, automaticFallback: false }); return;
     }
-    if (request.url === '/api/chat/status' && request.method === 'GET') {
-      send(200, { configured: Boolean(apiKey?.trim()), provider: 'Groq', model: chatModel, modelVerified: models.isVerified(chatModel) }); return;
+    if (route === '/api/chat/status' && request.method === 'GET') {
+      send(200, { configured: Boolean(apiKey?.trim()), provider: 'Groq', model: chatModels[selectedLanguage] || chatModel, modelVerified: models.isVerified(chatModels[selectedLanguage] || chatModel) }); return;
     }
-    if (request.url === '/api/tts/status' && request.method === 'GET') {
-      try { send(200, await tts.status()); } catch { send(503, { error: 'Speech provider verification is unavailable.' }); }
+    if (route === '/api/tts/status' && request.method === 'GET') {
+      try { send(200, regional ? sarvam.status(selectedLanguage) : await tts.status()); } catch { send(503, { error: 'Speech provider verification is unavailable.' }); }
       return;
     }
     if (request.url.startsWith('/api/memory/')) { await memory.handle(request, response, send, requestId); return; }
-    const isChat = request.url === '/api/chat';
-    const isTts = request.url === '/api/tts';
-    if ((!isChat && !isTts && request.url !== '/api/transcribe') || request.method !== 'POST') { send(404, { error: 'Endpoint not found.' }); return; }
+    const isChat = route === '/api/chat';
+    const isTts = route === '/api/tts';
+    if ((!isChat && !isTts && route !== '/api/transcribe') || request.method !== 'POST') { send(404, { error: 'Endpoint not found.' }); return; }
     const kind = isTts ? 'speech' : isChat ? 'chat' : 'transcription';
-    const provider = isTts ? ttsProvider === 'cartesia' ? 'Cartesia' : ttsProvider === 'browser' ? 'Browser' : 'ElevenLabs' : isChat || sttProvider === 'groq' ? 'Groq' : sttProvider === 'deepgram' ? 'Deepgram' : 'Browser';
+    let provider = regional && !isChat ? 'Sarvam' : isTts ? ttsProvider === 'cartesia' ? 'Cartesia' : ttsProvider === 'browser' ? 'Browser' : 'ElevenLabs' : isChat || sttProvider === 'groq' ? 'Groq' : sttProvider === 'deepgram' ? 'Deepgram' : 'Browser';
+    let requestModel = isChat ? chatModels[selectedLanguage] || chatModel : regional ? isTts ? sarvam.status(selectedLanguage).model : sarvamSttModel : isTts ? ttsProvider === 'cartesia' ? cartesiaModel : ttsModel || 'eleven_multilingual_v2' : deepgram ? deepgramModel : model;
     const window = windows[kind];
     if (now() - window.start >= 60_000) { window.start = now(); window.count = 0; }
     if (++window.count > window.limit) { response.setHeader('Retry-After', String(Math.max(1, Math.ceil((60_000 - (now() - window.start)) / 1000)))); send(429, { error: `${isTts ? 'Speech' : isChat ? 'Conversation' : 'Transcription'} request limit reached. Wait a minute before trying again.` }); return; }
@@ -68,7 +81,7 @@ export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, b
     const started = now();
     inFlight += 1;
     try {
-      if ((isChat || !isTts && sttProvider === 'groq') && !apiKey?.trim()) throw Object.assign(new ApiError(503, 'Groq is not connected. Configure GROQ_API_KEY in the backend .env and restart the server.'), { errorCode: 'missing_credentials' });
+      if ((isChat || !isTts && !regional && sttProvider === 'groq') && !apiKey?.trim()) throw Object.assign(new ApiError(503, 'Groq is not connected. Configure GROQ_API_KEY in the backend .env and restart the server.'), { errorCode: 'missing_credentials' });
       const type = request.headers['content-type']?.split(';')[0].trim().toLowerCase();
       if (isChat || isTts ? type !== 'application/json' : !AUDIO_TYPES.includes(type)) throw new ApiError(415, isChat || isTts ? 'Chat and TTS requests must use application/json.' : 'Only WebM, Ogg or WAV audio is supported.');
       const maxBytes = isTts ? MAX_TTS_BYTES : isChat ? MAX_CHAT_BYTES : MAX_AUDIO_BYTES;
@@ -86,7 +99,12 @@ export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, b
       if (isTts) {
         let body;
         try { body = JSON.parse(audio.toString('utf8')); } catch { throw new ApiError(400, 'Speech request contains invalid JSON.'); }
-        const result = await tts.synthesize(validateTtsRequest(body), { signal: abort.signal });
+        const input = validateTtsRequest(body);
+        selectedLanguage = input.language || selectedLanguage;
+        regional = selectedLanguage !== 'en';
+        provider = regional ? 'Sarvam' : ttsProvider === 'cartesia' ? 'Cartesia' : ttsProvider === 'browser' ? 'Browser' : 'ElevenLabs';
+        requestModel = regional ? sarvam.status(selectedLanguage).model : ttsProvider === 'cartesia' ? cartesiaModel : ttsModel || 'eleven_multilingual_v2';
+        const result = await (regional ? sarvam : tts).synthesize({ ...input, ...(regional ? { language: selectedLanguage } : {}) }, { signal: abort.signal });
         logger({ event: 'ai_request', requestId, kind, provider, model: result.model, status: 200, latencyMs: Math.max(0, now() - started) });
         if (!response.destroyed) response.writeHead(200, { 'Content-Type': result.mimeType || 'audio/mpeg', 'Content-Length': result.audio.length, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Echo-Voice-Id': result.voiceId, 'X-Echo-Tts-Model': result.model, 'X-Zirumi-Tts-Provider': provider }).end(result.audio);
         return;
@@ -96,20 +114,27 @@ export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, b
         try { body = JSON.parse(audio.toString('utf8')); } catch { throw new ApiError(400, 'Chat request contains invalid JSON.'); }
         const input = validateChatRequest(body);
         const context = await memory.context(request, input.message, { signal: abort.signal });
-        await models.verify(chatModel, { signal: abort.signal });
-        const result = await generateReplyDetailed(input, { ...groqOptions, model: chatModel, memories: context.memories, signal: abort.signal });
+        const selectedModel = chatModels[input.language || selectedLanguage] || chatModel;
+        requestModel = selectedModel;
+        await models.verify(selectedModel, { signal: abort.signal });
+        const result = await generateReplyDetailed({ ...input, language: input.language || selectedLanguage }, { ...groqOptions, model: selectedModel, memories: context.memories, signal: abort.signal });
         if (context.notice) result.memoryNotice = context.notice;
         logger({ event: 'ai_request', requestId, kind, status: 200, endpoint: `${DEFAULT_GROQ_BASE_URL}/chat/completions`, ...result.metadata });
         send(200, result); return;
       }
       const mimeType = validateAudio(audio, request.headers['content-type']);
+      if (regional) {
+        const result = await sarvam.transcribe(audio, mimeType, selectedLanguage, { signal: abort.signal });
+        logger({ event: 'ai_request', requestId, kind, status: 200, ...result.metadata });
+        send(200, result); return;
+      }
       if (sttProvider === 'browser') throw new ApiError(503, 'Browser recognition is explicitly selected. Choose browser recognition in settings.');
       if (!deepgram) await models.verify(model, { signal: abort.signal });
       const result = deepgram ? await deepgram.transcribe(audio, mimeType, { signal: abort.signal }) : await transcribeAudioDetailed(audio, mimeType, { ...groqOptions, model, language, signal: abort.signal });
       logger({ event: 'ai_request', requestId, kind, status: 200, endpoint: deepgram ? 'https://api.deepgram.com/v1/listen' : `${DEFAULT_GROQ_BASE_URL}/audio/transcriptions`, ...result.metadata });
       send(200, result);
     } catch (error) {
-      logger({ event: 'ai_request', requestId, provider, kind, model: isTts ? ttsProvider === 'cartesia' ? cartesiaModel : ttsModel || 'eleven_multilingual_v2' : isChat ? chatModel : deepgram ? deepgramModel : model, endpoint: error.endpoint || (isTts ? ttsProvider === 'cartesia' ? 'https://api.cartesia.ai/tts/bytes' : 'https://api.elevenlabs.io/v1/text-to-speech' : deepgram && !isChat ? 'https://api.deepgram.com/v1/listen' : isChat ? `${DEFAULT_GROQ_BASE_URL}/chat/completions` : `${DEFAULT_GROQ_BASE_URL}/audio/transcriptions`), errorCode: error.errorCode || error.networkCode || (error instanceof ApiError ? `http_${error.status}` : 'internal_error'), status: error instanceof ApiError ? error.status : 500, ...(Number.isInteger(error.providerStatus) ? { providerStatus: error.providerStatus } : {}), latencyMs: Math.max(0, now() - started), cancelled: abort.signal.aborted });
+      logger({ event: 'ai_request', requestId, provider, kind, model: requestModel, endpoint: error.endpoint || (provider === 'Sarvam' ? 'https://api.sarvam.ai' + (isTts ? '/text-to-speech' : '/speech-to-text') : isTts ? ttsProvider === 'cartesia' ? 'https://api.cartesia.ai/tts/bytes' : 'https://api.elevenlabs.io/v1/text-to-speech' : deepgram && !isChat ? 'https://api.deepgram.com/v1/listen' : isChat ? `${DEFAULT_GROQ_BASE_URL}/chat/completions` : `${DEFAULT_GROQ_BASE_URL}/audio/transcriptions`), errorCode: error.errorCode || error.networkCode || (error instanceof ApiError ? `http_${error.status}` : 'internal_error'), status: error instanceof ApiError ? error.status : 500, ...(Number.isInteger(error.providerStatus) ? { providerStatus: error.providerStatus } : {}), latencyMs: Math.max(0, now() - started), cancelled: abort.signal.aborted });
       if (error.status === 429 && Number.isInteger(error.retryAfter)) response.setHeader('Retry-After', String(error.retryAfter));
       send(error instanceof ApiError ? error.status : 500, { error: error instanceof ApiError ? error.message : 'The AI request failed. Please try again.' });
     } finally {

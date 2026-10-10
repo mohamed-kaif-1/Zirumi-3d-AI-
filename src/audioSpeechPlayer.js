@@ -24,7 +24,7 @@ export function createAudioSpeechPlayer({ env = globalThis, onState, onAmplitude
     onAmplitude(0);
   }
   function cancel() { sequence++; cleanup(); }
-  function play(text, { avatarId, rate, presetId, volume, preview = false, voiceIdentity = '', provider = 'elevenlabs' }) {
+  function play(text, { avatarId, rate, presetId, volume, preview = false, voiceIdentity = '', provider = 'elevenlabs', language = 'en' }) {
     cancel();
     const job = { id: ++sequence, abort: new AbortController(), audio: null, url: null, frame: null, timer: null };
     active = job;
@@ -35,10 +35,10 @@ export function createAudioSpeechPlayer({ env = globalThis, onState, onAmplitude
     job.timer = env.setTimeout(() => fail('Speech preparation timed out. Try Preview again.'), 50_000);
     (async () => {
       if (!supported) throw new Error('Audio speech playback is unavailable in this browser.');
-      const cacheKey = JSON.stringify([provider, avatarId, voiceIdentity, text, Math.min(1.2, rate), presetId]);
+      const cacheKey = JSON.stringify([provider, language, avatarId, voiceIdentity, text, Math.min(1.2, rate), presetId]);
       let blob = preview ? previews.get(cacheKey) : null;
       if (!blob) {
-        const response = await env.fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, avatarId, rate: Math.min(1.2, rate), presetId }), signal: job.abort.signal });
+        const response = await env.fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, avatarId, rate: Math.min(1.2, rate), presetId, ...(language !== 'en' ? { language } : {}) }), signal: job.abort.signal });
         if (!current()) return;
         if (!response.ok) { let result; try { result = await response.json(); } catch { /* safe local error below */ } throw new Error(result?.error || 'Speech request failed.'); }
         if (!/^audio\/(?:mpeg|wav|wave|x-wav)(?:;|$)/i.test(response.headers.get('content-type') || '')) throw new Error('The speech server did not return supported MP3 or WAV audio.');

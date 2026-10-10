@@ -16,7 +16,13 @@ authentication or per-user production limits.
 Phase 1 uses push-to-talk HTTP uploads and buffered REST audio. WebSocket STT
 and streamed playback are not enabled. Before adding or deploying them, verify
 host support for long-lived connections, proxy idle timeouts and WebSockets.
-Mem0 and Sarvam deployment is gated on preceding live acceptance checks.
+Mem0 identities and consent live in ignored `.zirumi/memory-identities.json`.
+Persist that backend storage securely across restarts; use one backend process or
+a shared authenticated identity store before scaling. Public cookies require
+Secure/HTTPS, authenticated account binding and per-user abuse controls. The
+current HttpOnly SameSite local cookie is a local-demo identity, not a complete
+public account system.
 
-Nothing was deployed publicly during this work. See PHASE1_REPORT.md for the
-current readiness result and missing credentials/voice verification.
+Nothing was deployed publicly during this work. See PHASE3_REPORT.md for the
+final local verification result. All six configured keys stay server-side; no
+provider balance or free-credit allowance is promised.

@@ -1,6 +1,7 @@
 import { createVoiceController } from './voiceController.js';
 import { createSpeechController } from './speechController.js';
 import { avatarVoiceId } from './avatarVoiceProfiles.js';
+import { LANGUAGES } from './languages.js';
 
 export const CONVERSATION_STATES = ['IDLE', 'LISTENING', 'TRANSCRIBING', 'THINKING', 'SPEAKING', 'ERROR'];
 
@@ -23,7 +24,7 @@ export function recentHistory(messages) {
 export function createConversationController({ env = globalThis, onChange, initialAvatarId = 'default' }) {
   let disposed = false, request = null, sequence = 0, resetting = false;
   let voiceEpoch = 0;
-  let snapshot = { state: 'IDLE', messages: [], error: '', memoryNotice: '', connection: 'unchecked', model: '', voice: null, speech: null, avatarId: avatarVoiceId(initialAvatarId), avatarSwitching: false };
+  let snapshot = { language: 'en', state: 'IDLE', messages: [], error: '', memoryNotice: '', connection: 'unchecked', model: '', voice: null, speech: null, avatarId: avatarVoiceId(initialAvatarId), avatarSwitching: false };
   const publish = (patch = {}) => {
     snapshot = { ...snapshot, ...patch };
     if (!disposed && !resetting) onChange(snapshot);
@@ -53,7 +54,7 @@ export function createConversationController({ env = globalThis, onChange, initi
     const version = ++healthVersion;
     const timer = env.setTimeout(() => currentHealth.abort(), 8000);
     try {
-      const response = await env.fetch('/api/chat/status', { signal: currentHealth.signal });
+      const response = await env.fetch('/api/chat/status' + (snapshot.language === 'en' ? '' : '?language=' + snapshot.language), { signal: currentHealth.signal });
       const data = await response.json();
       if (!disposed && version === healthVersion) publish({ connection: response.ok && data.configured ? 'configured' : 'setup', model: typeof data.model === 'string' ? data.model : '' });
     } catch { if (!disposed && version === healthVersion) publish({ connection: 'offline' }); }
@@ -82,7 +83,7 @@ export function createConversationController({ env = globalThis, onChange, initi
     publish({ messages, error: '', state: 'THINKING' });
     current.timer = env.setTimeout(() => cancelRequest('ZIRUMI took too long to reply. Please try again.'), 50_000);
     try {
-      const response = await env.fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, history, avatarId }), signal: current.abort.signal });
+      const response = await env.fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, history, avatarId, ...(snapshot.language !== 'en' ? { language: snapshot.language } : {}) }), signal: current.abort.signal });
       let result;
       try { result = await response.json(); } catch { throw new Error('The AI server returned an unreadable response. Check that the backend is running.'); }
       if (!response.ok) throw new Error(result.error || 'ZIRUMI could not answer. Please try again.');
@@ -124,6 +125,11 @@ export function createConversationController({ env = globalThis, onChange, initi
     refreshState();
   }
   return {
+    setLanguage(value) {
+      if (!Object.hasOwn(LANGUAGES, value) || value === snapshot.language) return;
+      interrupt(); voiceEpoch++; publish({ language: value, error: '', memoryNotice: '' });
+      speaker.setLanguage(value); microphone.setLanguage(value); checkConnection();
+    },
     submit, checkConnection, cancelRequest, interrupt, getSnapshot: () => snapshot,
     retry() {
       const failed = snapshot.messages.at(-1);
