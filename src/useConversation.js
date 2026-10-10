@@ -44,7 +44,7 @@ export default function useConversation(initialAvatarId = 'default') {
     };
   }, []);
   const methods = useMemo(() => {
-    const names = ['setLanguage', 'submit', 'retry', 'startListening', 'stopListening', 'cancelRecording', 'cancelRequest', 'stopSpeaking', 'setVoiceEnabled', 'selectVoice', 'selectPreset', 'resetVoice', 'previewVoice', 'beginAvatarSwitch', 'finishAvatarSwitch', 'cancelAvatarSwitch', 'setRate', 'setPitch', 'setVolume', 'setLangFilter', 'playReply', 'clear'];
+    const names = ['respondToBoundary', 'setLanguage', 'submit', 'retry', 'startListening', 'stopListening', 'cancelRecording', 'cancelRequest', 'stopSpeaking', 'setVoiceEnabled', 'selectVoice', 'selectPreset', 'resetVoice', 'previewVoice', 'beginAvatarSwitch', 'finishAvatarSwitch', 'cancelAvatarSwitch', 'setRate', 'setPitch', 'setVolume', 'setLangFilter', 'playReply', 'clear'];
     const api = Object.fromEntries(names.map(method => [method, (...args) => controller.current?.[method](...args)]));
     for (const [method, listeners] of Object.entries(subscriptions.current)) {
       api[method] = callback => {

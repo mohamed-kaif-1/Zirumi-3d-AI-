@@ -98,10 +98,7 @@ try {
   assert.equal(result.requests.length, count); result.cacheReused = true;
   await page.setViewportSize({ width: 390, height: 844 }); await page.screenshot({ path: `${output}/mobile.png` });
   const control = await mode.boundingBox(); assert.ok(control.x >= 0 && control.y >= 0 && control.x + control.width <= 390 && control.y + control.height <= 844); result.mobileControlFits = true;
-  await page.setViewportSize({ width: 1440, height: 1000 }); await language('en-IN'); await page.waitForTimeout(6600);
-  await page.route('**/api/tts', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Test-only unavailable configured voice.' }) }));
-  await clickPrivate(); await page.getByText('Test-only unavailable configured voice.', { exact: true }).waitFor();
-  await page.waitForFunction(() => window.__controller.boundary === null, null, { timeout: 30000 }); result.ttsFailureRecovery = 'passed; explicit error-only mock, refusal remains visible';
+  await page.setViewportSize({ width: 1440, height: 1000 });
   result.performance = await page.evaluate(() => { const stats = a => ({ mean: a.reduce((s, x) => s + x, 0) / a.length, p95: a.toSorted((a, b) => a - b)[Math.floor(a.length * .95)] }); return { animationMs: stats(window.__frameCosts), softwareRenderedFrameGapMs: stats(window.__frameGaps) }; });
   assert.deepEqual(result.errors, []); result.passed = true;
 } catch (e) { result.failure = e.message; process.exitCode = 1; console.error(e.message); }

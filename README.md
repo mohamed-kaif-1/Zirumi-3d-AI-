@@ -12,8 +12,9 @@ preferences approved in Memory controls, scoped to an opaque backend identity.
 Providers never change silently after an error. Legacy ElevenLabs, Groq Whisper
 and browser speech remain available through explicit English configuration.
 
-See [PHASE1_REPORT.md](PHASE1_REPORT.md), [PHASE2_REPORT.md](PHASE2_REPORT.md), and
-[PHASE3_REPORT.md](PHASE3_REPORT.md) for actual verification and checkpoints.
+See [PHASE1_REPORT.md](PHASE1_REPORT.md), [PHASE2_REPORT.md](PHASE2_REPORT.md),
+[PHASE3_REPORT.md](PHASE3_REPORT.md), [MODEL_QUALITY_REPORT.md](MODEL_QUALITY_REPORT.md),
+and [AVATAR_MOTION_REPORT.md](AVATAR_MOTION_REPORT.md) for audits and verification.
 Setup: [PHASE1_SETUP.md](PHASE1_SETUP.md), [PHASE2_SETUP.md](PHASE2_SETUP.md), and
 [PHASE3_SETUP.md](PHASE3_SETUP.md). Public hosting requirements remain in
 [DEPLOYMENT.md](DEPLOYMENT.md). Earlier migration reports are historical.
