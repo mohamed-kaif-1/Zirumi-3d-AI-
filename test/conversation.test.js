@@ -7,6 +7,24 @@ import { LANGUAGE_STORAGE_KEY, LANGUAGES, loadConversationLanguage, conversation
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const ok = (body) => ({ ok: true, json: async () => body });
+test('boundary playback has a global deadline and cannot remain active indefinitely', () => {
+  const f = browserFixture(), owner = createConversationController({ env: f.env, onChange() {} });
+  assert.equal(owner.respondToBoundary(), true);
+  assert.equal(owner.getSnapshot().speech.boundaryActive, true);
+  [...f.timers.values()].find(timer => timer.ms === 15000).run();
+  assert.equal(owner.getSnapshot().speech.boundaryActive, false); assert.match(owner.getSnapshot().error, /timed out/); owner.dispose();
+});
+test('local boundary policy cancels a pending reply, preserves completed history and does not call the LLM for refusal', async () => {
+  const f = browserFixture(), owner = createConversationController({ env: f.env, onChange() {} });
+  owner.setVoiceEnabled(false); await owner.submit('A completed conversation.');
+  const completed = owner.getSnapshot().messages.slice(); let release;
+  f.env.fetch = (url, options) => { f.requests.push({ url, options }); return new Promise(resolve => { release = resolve; }); };
+  const pending = owner.submit('Unfinished reply.'); const requestCount = f.requests.length;
+  assert.equal(owner.respondToBoundary(), false, 'muted voice keeps the refusal textual');
+  assert.equal(f.requests.length, requestCount); assert.equal(f.requests.at(-1).options.signal.aborted, true);
+  assert.deepEqual(owner.getSnapshot().messages.slice(0, 2), completed);
+  release(ok({ reply: 'Stale reply.' })); assert.equal(await pending, false); assert.equal(owner.getSnapshot().messages.length, 3); owner.dispose();
+});
 test('saved language survives controller recreation and configures recording and chat before the first turn', async () => {
   const data = new Map(), f = browserFixture();
   f.env.localStorage = { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) };

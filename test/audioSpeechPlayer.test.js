@@ -4,6 +4,15 @@ import { createAudioSpeechPlayer } from '../src/audioSpeechPlayer.js';
 import { createSpeechController } from '../src/speechController.js';
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
+test('fixed boundary audio is cached by language and character independently from conversation audio', async () => {
+  const f = fixture(), options = { avatarId: 'sky', rate: 1, presetId: 'sweet', volume: 1, boundary: true, language: 'ta-IN', provider: 'sarvam', voiceIdentity: 'ritu' };
+  f.player.play('Fixed refusal', options); await flush(); f.player.cancel();
+  f.player.play('Fixed refusal', options); await flush(); assert.equal(f.requests.length, 1);
+  f.player.play('Fixed refusal', { ...options, avatarId: 'nova' }); await flush();
+  f.player.play('Fixed refusal', { ...options, language: 'hi-IN' }); await flush();
+  f.player.play('Fixed refusal', { ...options, boundary: false }); await flush(); assert.equal(f.requests.length, 4);
+  f.player.dispose();
+});
 test('language changes discard stale voice metadata and cached previews never cross languages', async () => {
   const f = fixture(); let release;
   f.env.fetch = async (url, options) => {
@@ -112,6 +121,9 @@ test('hybrid owner uses fixed ElevenLabs routing and only a visibly configured b
   assert.ok(!Object.hasOwn(JSON.parse(f.requests[0].options.body), 'voiceId'));
   assert.equal(utterances[0].voice.voiceURI, 'zira');
   assert.match(speaker.getSnapshot().notice, /configured browser fallback/);
+  speaker.speak('No, please respect my boundaries.', { boundary: true }); await flush();
+  assert.equal(utterances.length, 1, 'A failed boundary statement must keep the configured character identity instead of using browser fallback');
+  assert.equal(speaker.getSnapshot().status, 'error'); assert.equal(speaker.getSnapshot().boundaryActive, false);
   speaker.dispose();
 });
 

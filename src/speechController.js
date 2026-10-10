@@ -23,7 +23,7 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
   const providerName = id => cloudProvider(id) === 'sarvam' ? 'Sarvam' : cloudProvider(id) === 'cartesia' ? 'Cartesia' : 'ElevenLabs';
   let fallbackReplay = null;
   let snapshot = { enabled: true, supported, status: 'idle', error: '', avatarId: avatarVoiceId(initialAvatarId), selectedVoice: '', selectedVoiceKey: '', voices: [], profiles: {}, previewAvatarId: null, rate: 1, pitch: 1, volume: 1, langFilter: 'all' };
-  const update = patch => { snapshot = { ...snapshot, ...patch }; if (!disposed) onChange(snapshot); };
+  const update = patch => { snapshot = { ...snapshot, ...patch, ...(['idle', 'error'].includes(patch.status) ? { boundaryActive: false } : {}) }; if (!disposed) onChange(snapshot); };
 
   function profileSnapshot() {
     const allocation = resolveAvatarVoices(installed, preferences, env.navigator?.language || 'en-US');
@@ -54,7 +54,7 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
     onFailure: message => {
       const replay = fallbackReplay; fallbackReplay = null;
       if (disposed || !replay) return;
-      if (language === 'en' && !replay.options.preview && ttsStatus?.fallback === 'browser' && browserSupported) {
+      if (language === 'en' && !replay.options.preview && !replay.options.boundary && ttsStatus?.fallback === 'browser' && browserSupported) {
         speakBrowser(replay.text, { ...replay.options, manual: true });
         update({ notice: `${message} Using the configured browser fallback: ${snapshot.playbackVoice?.name || 'Browser default'}.` });
       } else {
@@ -100,7 +100,7 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
     if (browserSupported) synth.cancel();
     update({ status: 'idle', error: '', notice: '', analysisNotice: '', previewAvatarId: null });
   }
-  function speakBrowser(text, { manual = false, preview = false, avatarId = snapshot.avatarId } = {}) {
+  function speakBrowser(text, { manual = false, preview = false, boundary = false, avatarId = snapshot.avatarId } = {}) {
     if (disposed || (!snapshot.enabled && !manual) || typeof text !== 'string' || !text.trim()) return false;
     cancel();
     if (!browserSupported) { update({ status: 'error', error: 'Spoken replies are unavailable in this browser. Text replies remain available.' }); return false; }
@@ -136,7 +136,7 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
     utterance.onend = () => { if (current()) { clearUtterance(); update({ status: 'idle', error: '', previewAvatarId: null }); } };
     utterance.onerror = ({ error }) => fail(error === 'not-allowed' ? 'Automatic voice playback was blocked. Click Play reply to hear it.' : `Voice playback failed (${error || 'unknown'}). Check your installed voices or try Preview.`);
     active.timer = env.setTimeout(() => fail('Voice playback did not start. Try Preview or check your installed voices.'), 8000);
-    update({ status: 'starting', error: '', playbackEngine: 'browser', previewAvatarId: preview ? avatarVoiceId(avatarId) : null, playbackAvatarId: avatarVoiceId(avatarId), playbackVoice: voiceIdentity(voice) });
+    update({ status: 'starting', error: '', boundaryActive: boundary, playbackEngine: 'browser', previewAvatarId: preview ? avatarVoiceId(avatarId) : null, playbackAvatarId: avatarVoiceId(avatarId), playbackVoice: voiceIdentity(voice) });
     try { synth.resume(); synth.speak(utterance); } catch { fail('Voice playback could not start. Try Preview again.'); }
     return true;
   }
@@ -146,7 +146,7 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
     if (!ttsStatus && audioPlayer.supported) {
       if (disposed || (!snapshot.enabled && !options.manual) || typeof text !== 'string' || !text.trim()) return false;
       cancel(); const epoch = nextId;
-      update({ status: 'starting', error: '', previewAvatarId: options.preview ? avatarId : null });
+      update({ status: 'starting', error: '', boundaryActive: Boolean(options.boundary), previewAvatarId: options.preview ? avatarId : null });
       checkTts().then(() => {
         if (disposed || nextId !== epoch) return;
         if (ttsStatus) speak(text, { ...options, avatarId });
@@ -160,8 +160,8 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
     if (!audioPlayer.supported) { update({ status: 'error', error: `${providerName(avatarId)} audio playback is unavailable in this browser.`, previewAvatarId: null }); return false; }
     const identity = snapshot.profiles[avatarId];
     fallbackReplay = { text, options: { ...options, avatarId } };
-    update({ previewAvatarId: options.preview ? avatarId : null, playbackAvatarId: avatarId, playbackVoice: { voiceURI: identity.providerVoiceId, name: ttsStatus?.avatars?.[avatarId]?.name || `${identity.profile.name} (unverified)`, lang: language } });
-    return audioPlayer.play(text.trim(), { avatarId, rate: identity.rate, presetId: identity.presetId, volume: identity.volume, provider: identity.provider, language, preview: Boolean(options.preview), voiceIdentity: `${identity.provider}:${identity.providerVoiceId}:${ttsStatus?.model || ''}` });
+    update({ boundaryActive: Boolean(options.boundary), previewAvatarId: options.preview ? avatarId : null, playbackAvatarId: avatarId, playbackVoice: { voiceURI: identity.providerVoiceId, name: ttsStatus?.avatars?.[avatarId]?.name || `${identity.profile.name} (unverified)`, lang: language } });
+    return audioPlayer.play(text.trim(), { avatarId, rate: identity.rate, presetId: identity.presetId, volume: identity.volume, provider: identity.provider, language, preview: Boolean(options.preview), boundary: Boolean(options.boundary), voiceIdentity: `${identity.provider}:${identity.providerVoiceId}:${ttsStatus?.model || ''}` });
   }
   function updateSettings(patch, id = snapshot.avatarId) {
     id = avatarVoiceId(id);

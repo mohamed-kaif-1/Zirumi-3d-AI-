@@ -10,6 +10,7 @@ import useConversation from './useConversation.js';
 import ConversationPanel from './ConversationPanel.jsx';
 import Dialog from './Dialog.jsx';
 import { LANGUAGES } from './languages.js';
+import { boundaryPhrase } from './boundaryBehavior.js';
 import Icon from './Icon.jsx';
 import useReducedMotion from './useReducedMotion.js';
 import defaultAvatarUrl from '../AvatarSample_W.vrm?url';
@@ -46,6 +47,8 @@ export default function App() {
 
   // Avatar Interaction & IK states
   const [enableHandInteraction, setEnableHandInteraction] = useState(true);
+  const [interactionMode, setInteractionMode] = useState(false);
+  const [boundaryNotice, setBoundaryNotice] = useState(null);
   const [holdPose, setHoldPose] = useState(false);
   const [enableSpeakingGestures, setEnableSpeakingGestures] = useState(true);
   const [enableIdleAnimation, setEnableIdleAnimation] = useState(true);
@@ -66,6 +69,11 @@ export default function App() {
   const echo = useConversation(selectedAvatarId);
   const echoRef = useRef(echo);
   echoRef.current = echo;
+  const handleBoundary = useCallback(() => {
+    const current = echoRef.current;
+    setBoundaryNotice({ avatarId: current.avatarId, language: current.language, text: boundaryPhrase(current.language) });
+    current.respondToBoundary();
+  }, []);
   const closeVoiceEditor = value => { if (!value) echo.stopSpeaking(); setVoiceEditorOpen(value); };
   const { voice, speech, messages, state } = echo;
   const voicePresetId = speech.presetId || getAvatarVoiceProfile(selectedAvatarId).preset;
@@ -213,11 +221,13 @@ export default function App() {
             <div className="stage-orbit" aria-hidden="true" />
             <header className="stage-heading"><div><span className="eyebrow">YOUR COMPANION</span><h2>{currentAvatar.name}<span className="character-presence" /></h2><p>{character.description}</p></div><div className={`stage-status state-${state.toLowerCase()}`} role="status"><span className="status-dot" />{avatarLoadingId ? 'Connecting…' : starting ? 'Starting microphone…' : speech.status === 'starting' ? 'Preparing voice…' : stateLabel}</div></header>
             <div className="avatar-canvas" style={{ animationName: `reveal-${selectedAvatarId}` }}>
-              <Avatar ref={avatarRef} modelUrl={modelUrl} modelRevision={modelRevision} onModelStatus={setModelStatus} onLoadingChange={handleAvatarLoadingChange} onModelLoaded={handleAvatarLoaded} conversationState={state} subscribeSpeechBoundary={echo.subscribeSpeechBoundary} subscribeSpeechAmplitude={echo.subscribeSpeechAmplitude} enableHandInteraction={enableHandInteraction} holdPose={holdPose} enableSpeakingGestures={enableSpeakingGestures && !reducedMotion} enableIdleAnimation={enableIdleAnimation && !reducedMotion} cameraView={cameraView} voicePreset={voicePresetId} avatarPersonality={motionProfile} onRigStatusChange={setRigInfo} onReachLimitChange={setReachLimit} />
+              <Avatar ref={avatarRef} avatarId={selectedAvatarId} interactionMode={interactionMode && !avatarLoadingId} onBoundary={handleBoundary} boundarySpeechActive={speech.boundaryActive} modelUrl={modelUrl} modelRevision={modelRevision} onModelStatus={setModelStatus} onLoadingChange={handleAvatarLoadingChange} onModelLoaded={handleAvatarLoaded} conversationState={state} subscribeSpeechBoundary={echo.subscribeSpeechBoundary} subscribeSpeechAmplitude={echo.subscribeSpeechAmplitude} enableHandInteraction={enableHandInteraction} holdPose={holdPose} enableSpeakingGestures={enableSpeakingGestures && !reducedMotion} enableIdleAnimation={enableIdleAnimation && !reducedMotion} cameraView={cameraView} voicePreset={voicePresetId} avatarPersonality={motionProfile} onRigStatusChange={setRigInfo} onReachLimitChange={setReachLimit} />
             </div>
             <div className="stage-bottom">
+              <button type="button" className={`character-interact-button ${interactionMode ? 'active' : ''}`} aria-label="Character interaction" aria-pressed={interactionMode} disabled={!rigInfo.compatible || rigInfo.colliderCalibrated === false || Boolean(avatarLoadingId)} onClick={() => setInteractionMode(value => !value)}><Icon name="hand" size={15} />{interactionMode ? 'Interacting · Back to view' : 'Interact'}</button>
+              {boundaryNotice?.avatarId === echo.avatarId && boundaryNotice?.language === echo.language && <p className="boundary-notice" role="status">{boundaryNotice.text}</p>}
               <InteractionToolbar enableHandInteraction={enableHandInteraction} onToggleHandInteraction={() => setEnableHandInteraction(prev => !prev)} holdPose={holdPose} onToggleHoldPose={() => setHoldPose(prev => !prev)} onResetPose={() => avatarRef.current?.resetPose()} enableSpeakingGestures={enableSpeakingGestures} onToggleSpeakingGestures={() => setEnableSpeakingGestures(prev => !prev)} enableIdleAnimation={enableIdleAnimation} onToggleIdleAnimation={() => setEnableIdleAnimation(prev => !prev)} cameraView={cameraView} onToggleCameraView={() => setCameraView(prev => prev === 'upper' ? 'full' : 'upper')} isFullscreen={isFullscreen} onToggleFullscreen={() => setIsFullscreen(prev => !prev)} rigInfo={rigInfo} reachLimit={reachLimit} />
-              <div className="stage-caption"><span>{enableHandInteraction && rigInfo.compatible ? 'Drag her hands. Make it your moment.' : 'Drag to rotate · Scroll to zoom'}</span><WaveformVisualizer state={state} audioLevel={voice.level} subscribeSpeechAmplitude={echo.subscribeSpeechAmplitude} color={character.accent} reducedMotion={reducedMotion} /></div>
+              <div className="stage-caption"><span>{interactionMode ? 'Click to interact · Drag hands to pose' : enableHandInteraction && rigInfo.compatible ? 'Drag hands to pose · Interact enables touch' : 'Drag to rotate · Scroll to zoom'}</span><WaveformVisualizer state={state} audioLevel={voice.level} subscribeSpeechAmplitude={echo.subscribeSpeechAmplitude} color={character.accent} reducedMotion={reducedMotion} /></div>
             </div>
             <div className="scene-accessory"><input ref={fileRef} type="file" accept=".vrm" onChange={importVrm} hidden aria-label="Import VRM avatar" /><button type="button" className="icon-button" onClick={() => fileRef.current?.click()} aria-label="Import .vrm" title="Import a custom .vrm model"><Icon name="upload" size={16} /></button></div>
             <span className="model-status sr-only" role="status">{modelStatus}</span>

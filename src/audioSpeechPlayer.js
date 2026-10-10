@@ -3,6 +3,7 @@ export function createAudioSpeechPlayer({ env = globalThis, onState, onAmplitude
   let active = null, sequence = 0;
   // Only fixed character samples are cached, in memory, never conversation audio.
   const previews = new Map();
+  const boundaries = new Map();
   const rememberPreview = (key, blob) => {
     previews.delete(key); previews.set(key, blob);
     while (previews.size > 4 || [...previews.values()].reduce((sum, value) => sum + value.size, 0) > 16 * 1024 * 1024) previews.delete(previews.keys().next().value);
@@ -24,7 +25,7 @@ export function createAudioSpeechPlayer({ env = globalThis, onState, onAmplitude
     onAmplitude(0);
   }
   function cancel() { sequence++; cleanup(); }
-  function play(text, { avatarId, rate, presetId, volume, preview = false, voiceIdentity = '', provider = 'elevenlabs', language = 'en' }) {
+  function play(text, { avatarId, rate, presetId, volume, preview = false, boundary = false, voiceIdentity = '', provider = 'elevenlabs', language = 'en' }) {
     cancel();
     const job = { id: ++sequence, abort: new AbortController(), audio: null, url: null, frame: null, timer: null };
     active = job;
@@ -32,11 +33,11 @@ export function createAudioSpeechPlayer({ env = globalThis, onState, onAmplitude
     const fail = message => { if (current()) { cleanup(); onFailure(message); } };
     onAmplitude(0);
     onState({ status: 'starting', error: '', playbackEngine: provider, audioAnalysis: false });
-    job.timer = env.setTimeout(() => fail('Speech preparation timed out. Try Preview again.'), 50_000);
+    job.timer = env.setTimeout(() => fail('Speech preparation timed out. Try Preview again.'), boundary ? 15_000 : 50_000);
     (async () => {
       if (!supported) throw new Error('Audio speech playback is unavailable in this browser.');
       const cacheKey = JSON.stringify([provider, language, avatarId, voiceIdentity, text, Math.min(1.2, rate), presetId]);
-      let blob = preview ? previews.get(cacheKey) : null;
+      let blob = boundary ? boundaries.get(cacheKey) : preview ? previews.get(cacheKey) : null;
       if (!blob) {
         const response = await env.fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, avatarId, rate: Math.min(1.2, rate), presetId, ...(language !== 'en' ? { language } : {}) }), signal: job.abort.signal });
         if (!current()) return;
@@ -47,6 +48,10 @@ export function createAudioSpeechPlayer({ env = globalThis, onState, onAmplitude
       if (!current()) return;
       if (!blob.size || blob.size > 10 * 1024 * 1024) throw new Error('The speech server returned empty or oversized audio.');
       if (preview) rememberPreview(cacheKey, blob);
+      if (boundary) {
+        boundaries.delete(cacheKey); boundaries.set(cacheKey, blob);
+        while (boundaries.size > 12 || [...boundaries.values()].reduce((sum, b) => sum + b.size, 0) > 4 * 1024 * 1024) boundaries.delete(boundaries.keys().next().value);
+      }
       job.url = env.URL.createObjectURL(blob);
       job.audio = new env.Audio(job.url);
       job.audio.volume = volume;
@@ -96,5 +101,5 @@ export function createAudioSpeechPlayer({ env = globalThis, onState, onAmplitude
     })().catch(error => { if (current()) fail(error.name === 'NotAllowedError' ? 'Audio playback was blocked. Click Preview or Play reply to hear it.' : error.message || 'Speech audio could not start.'); });
     return true;
   }
-  return { supported, play, cancel, dispose() { cancel(); previews.clear(); } };
+  return { supported, play, cancel, dispose() { cancel(); previews.clear(); boundaries.clear(); } };
 }

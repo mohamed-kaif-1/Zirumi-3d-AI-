@@ -17,6 +17,7 @@ export default function HandHandle({
   orbitControlsRef,
   isAtReachLimit = false,
   enabled = true,
+  interactionMode = false,
 }) {
   const groupRef = useRef();
   const ringRef = useRef();
@@ -24,17 +25,26 @@ export default function HandHandle({
 
   const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const captureRef = useRef(null);
   useEffect(() => () => {
+    const capture = captureRef.current;
+    try { capture?.target.releasePointerCapture(capture.id); } catch { /* Capture may already have ended. */ }
     document.body.style.cursor = 'default';
-    if (orbitControlsRef.current) orbitControlsRef.current.enabled = true;
-  }, [orbitControlsRef]);
+    if (orbitControlsRef.current) orbitControlsRef.current.enabled = !interactionMode;
+  }, [orbitControlsRef, interactionMode]);
 
   const boneName = side === 'left' ? 'leftHand' : 'rightHand';
 
   useFrame(({ clock }) => {
     if (!groupRef.current || !controller) return;
+    if (dragging && (!enabled || controller.boundary || controller[side + 'ArmState'] !== 'DRAGGING')) {
+      const capture = captureRef.current; captureRef.current = null;
+      try { capture?.target.releasePointerCapture(capture.id); } catch { /* Already released. */ }
+      setDragging(false); setHovered(false); document.body.style.cursor = 'default';
+      if (orbitControlsRef.current) orbitControlsRef.current.enabled = !interactionMode;
+    }
 
-    if (!dragging) {
+    {
       // Follow the actual hand bone world position
       const handBone = controller.bones?.[boneName];
       if (handBone) {
@@ -59,7 +69,7 @@ export default function HandHandle({
     }
   });
 
-  if (!enabled || !controller?.hasHumanoid) return null;
+  if (!enabled || !controller?.hasHumanoid || controller.collision?.calibrated === false) return null;
 
   // Determine indicator color
   let color = '#00f0ff'; // Sleek cyan
@@ -90,8 +100,10 @@ export default function HandHandle({
 
   function handlePointerDown(e) {
     e.stopPropagation();
+    if (e.button !== 0 || e.isPrimary === false || controller.boundary || !controller.startDrag(side, groupRef.current.position)) return;
     try {
       e.target.setPointerCapture(e.pointerId);
+      captureRef.current = { target: e.target, id: e.pointerId };
     } catch {
       // Ignored for environments without setPointerCapture support
     }
@@ -108,7 +120,6 @@ export default function HandHandle({
     camera.getWorldDirection(_camDir).negate();
     if (groupRef.current) {
       _dragPlane.setFromNormalAndCoplanarPoint(_camDir, groupRef.current.position);
-      controller.startDrag(side, groupRef.current.position);
     }
   }
 
@@ -121,9 +132,6 @@ export default function HandHandle({
     const hit = raycaster.ray.intersectPlane(_dragPlane, _vIntersection);
     if (hit) {
       controller.updateDrag(side, _vIntersection);
-      if (groupRef.current) {
-        groupRef.current.position.copy(_vIntersection);
-      }
     }
   }
 
@@ -138,11 +146,12 @@ export default function HandHandle({
     }
 
     setDragging(false);
+    captureRef.current = null;
     document.body.style.cursor = hovered ? 'grab' : 'default';
 
     // Re-enable OrbitControls after dragging ends
     if (orbitControlsRef.current) {
-      orbitControlsRef.current.enabled = true;
+      orbitControlsRef.current.enabled = !interactionMode;
     }
 
     controller.endDrag(side);
@@ -157,6 +166,8 @@ export default function HandHandle({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onLostPointerCapture={handlePointerUp}
       >
         <sphereGeometry args={[0.09, 12, 12]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />

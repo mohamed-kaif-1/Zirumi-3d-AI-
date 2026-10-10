@@ -40,6 +40,7 @@ export class TwoBoneIKSolver {
       const elevation = targetWorld.y - shoulderPosition.y;
       const lift = Math.min(0.2, Math.max(0, elevation - 0.05) * 0.25);
       shoulder.quaternion.setFromAxisAngle(hingeAxis, side === 'left' ? lift : -lift);
+      if (chain.shoulderRest) shoulder.quaternion.premultiply(chain.shoulderRest);
       shoulder.updateWorldMatrix(true, true);
       upperArm.getWorldPosition(shoulderPosition);
     }

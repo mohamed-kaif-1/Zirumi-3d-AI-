@@ -6,6 +6,7 @@ import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { prepareAvatar, disposeAvatarScene } from './avatarModel.js';
 import { AvatarAnimationController } from './AvatarAnimationController.js';
 import HandHandle from './HandHandle.jsx';
+import CharacterInteraction from './CharacterInteraction.jsx';
 import { mouthOpenForState } from './avatarAnimation.js';
 
 // Recognized 3D demo avatar fallback before importing a VRM.
@@ -81,6 +82,7 @@ function Character({
   orbitControlsRef,
   reachLimit,
   enableHandInteraction,
+  interactionMode,
 }) {
   const mount = useRef(null);
   const [hasVrm, setHasVrm] = useState(false);
@@ -214,6 +216,7 @@ function Character({
             orbitControlsRef={orbitControlsRef}
             isAtReachLimit={reachLimit.left}
             enabled={enableHandInteraction}
+            interactionMode={interactionMode}
           />
           <HandHandle
             key={`right-${rigVersion}`}
@@ -222,6 +225,7 @@ function Character({
             orbitControlsRef={orbitControlsRef}
             isAtReachLimit={reachLimit.right}
             enabled={enableHandInteraction}
+            interactionMode={interactionMode}
           />
         </>
       )}
@@ -246,6 +250,10 @@ const Avatar = forwardRef(function Avatar(
     cameraView = 'upper',
     voicePreset = 'sweet',
     avatarPersonality,
+    interactionMode = false,
+    avatarId = 'default',
+    onBoundary,
+    boundarySpeechActive = false,
     onRigStatusChange = () => {},
     onReachLimitChange = () => {},
   },
@@ -285,6 +293,8 @@ const Avatar = forwardRef(function Avatar(
     controller.activeVoicePreset = voicePreset;
     controller.avatarPersonality = avatarPersonality;
   }, [controller, enableHandInteraction, holdPose, enableSpeakingGestures, enableIdleAnimation, voicePreset, avatarPersonality]);
+  useEffect(() => { controller.boundarySpeechActive = boundarySpeechActive; }, [controller, boundarySpeechActive]);
+  useEffect(() => { if (orbitControlsRef.current) orbitControlsRef.current.enabled = !interactionMode; }, [interactionMode]);
 
   // Adjust camera and OrbitControls target when cameraView switches
   useEffect(() => {
@@ -338,10 +348,11 @@ const Avatar = forwardRef(function Avatar(
 
   return (
     <Canvas camera={{ position: [0, 1.42, 2.3], fov: 36 }} dpr={[1, 1.5]} gl={{ alpha: true, antialias: true }}>
-      <ambientLight intensity={0.8} />
-      <hemisphereLight args={['#f1eaff', '#333048', 0.9]} />
-      <directionalLight intensity={1.4} position={[2.5, 5, 3]} />
-      <pointLight intensity={2.5} color="#dac9ff" position={[-2, 1.7, 1.5]} />
+      <ambientLight intensity={0.65} />
+      <hemisphereLight args={['#f1eaff', '#333048', 0.8]} />
+      <directionalLight intensity={1.5} color="#fff2e8" position={[2.5, 5, 3]} />
+      <directionalLight intensity={0.55} color="#bacdff" position={[-3, 2, 2]} />
+      <directionalLight intensity={0.9} color="#dac9ff" position={[-1, 2.4, -2]} />
 
       <Character
         modelUrl={modelUrl}
@@ -354,10 +365,14 @@ const Avatar = forwardRef(function Avatar(
         orbitControlsRef={orbitControlsRef}
         reachLimit={reachLimit}
         enableHandInteraction={enableHandInteraction}
+        interactionMode={interactionMode}
       />
 
       <OrbitControls
         ref={orbitControlsRef}
+        enabled={!interactionMode}
+        enableDamping
+        dampingFactor={0.08}
         enablePan={false}
         minDistance={1.4}
         maxDistance={5.5}
@@ -365,6 +380,7 @@ const Avatar = forwardRef(function Avatar(
         maxPolarAngle={1.8}
         target={[0, 1.25, 0]}
       />
+      <CharacterInteraction controller={controller} enabled={interactionMode} avatarId={avatarId} onBoundary={onBoundary} orbitControlsRef={orbitControlsRef} />
     </Canvas>
   );
 });

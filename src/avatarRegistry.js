@@ -20,8 +20,8 @@ export const AVATAR_REGISTRY = [
   {
     id: 'sky',
     name: 'Luna',
-    title: 'Sweet Anime Companion',
-    description: 'Cute, playful, youthful',
+    title: 'Playful Adult Companion',
+    description: 'Playful, cheerful, curious',
     outfit: 'Vivi Original Outfit',
     modelUrl: '/models/sky.vrm',
     thumbnailUrl: '/avatars/sky.png',

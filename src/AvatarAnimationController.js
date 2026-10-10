@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { TwoBoneIKSolver } from './twoBoneIKSolver.js';
+import { BodyCollision } from './bodyCollision.js';
+import { BOUNDARY_PROFILES } from './boundaryBehavior.js';
 import { REST_POSE, GESTURE_TARGETS, getBreathingOffset, BlinkController, getHeadRotations } from './proceduralPoses.js';
 
 /**
@@ -80,6 +82,12 @@ export class AvatarAnimationController {
     this._vTmp2 = new THREE.Vector3();
     this._qTmp = new THREE.Quaternion();
     this._eulerTmp = new THREE.Euler(0, 0, 0, 'YXZ');
+    this.boundary = null;
+    this.elapsedTime = 0;
+    this.animationState = 'IDLE';
+    this.eyeTarget = new THREE.Vector3(0, 1.45, 2.3);
+    this.safeTargets = { left: new THREE.Vector3(), right: new THREE.Vector3() };
+    this.candidate = new THREE.Vector3();
   }
 
   /**
@@ -87,6 +95,8 @@ export class AvatarAnimationController {
    * Performs full humanoid compatibility inspection.
    */
   setVRM(vrm) {
+    if (this.vrm && this.sceneRestPosition) this.vrm.scene.position.copy(this.sceneRestPosition);
+    this.boundary = null; this.collision = null; this.chains = {};
     this.ikSolver = new TwoBoneIKSolver();
     this.blinkController = new BlinkController();
     this.currentMouthOpen = 0;
@@ -120,6 +130,8 @@ export class AvatarAnimationController {
       chest: getBone('chest') || getBone('upperChest'),
       neck: getBone('neck'),
       head: getBone('head'),
+      leftUpperLeg: getBone('leftUpperLeg'), leftLowerLeg: getBone('leftLowerLeg'), leftFoot: getBone('leftFoot'),
+      rightUpperLeg: getBone('rightUpperLeg'), rightLowerLeg: getBone('rightLowerLeg'), rightFoot: getBone('rightFoot'),
       leftShoulder: getBone('leftShoulder'),
       leftUpperArm: getBone('leftUpperArm'),
       leftLowerArm: getBone('leftLowerArm'),
@@ -185,6 +197,15 @@ export class AvatarAnimationController {
     this.resetPose();
     this.currentTargets.left.copy(this.desiredTargets.left);
     this.currentTargets.right.copy(this.desiredTargets.right);
+    this.sceneRestPosition = vrm.scene.position.clone();
+    const headTop = new THREE.Box3().setFromObject(vrm.scene).max.y;
+    this.collision = new BodyCollision(this.bones, Number.isFinite(headTop) ? headTop : 1.65);
+    this.rigInfo.colliderCalibrated = this.collision.calibrated;
+    for (const side of ['left', 'right']) {
+      const upperArm = this.bones[side + 'UpperArm'], lowerArm = this.bones[side + 'LowerArm'], hand = this.bones[side + 'Hand'], shoulder = this.bones[side + 'Shoulder'];
+      if (!upperArm || !lowerArm || !hand) continue;
+      this.chains[side] = { side, upperArm, lowerArm, hand, shoulder, shoulderRest: shoulder?.quaternion.clone(), safeRotations: [upperArm.quaternion.clone(), lowerArm.quaternion.clone(), shoulder?.quaternion.clone()], hasSafePose: true };
+    }
     if (this.conversationState === 'SPEAKING') this.chooseSpeakingGesture();
     this.onStatusChange(this.rigInfo);
   }
@@ -209,7 +230,7 @@ export class AvatarAnimationController {
    * Handle user beginning to drag an arm hand.
    */
   startDrag(side, worldPos) {
-    if (!this.enableHandInteraction || !this.hasHumanoid) return;
+    if (!this.enableHandInteraction || !this.hasHumanoid || this.boundary) return false;
     if (side === 'left') {
       this.leftArmState = 'DRAGGING';
       this.desiredTargets.left.copy(worldPos);
@@ -217,13 +238,14 @@ export class AvatarAnimationController {
       this.rightArmState = 'DRAGGING';
       this.desiredTargets.right.copy(worldPos);
     }
+    return true;
   }
 
   /**
    * Handle user moving the dragged hand.
    */
   updateDrag(side, worldPos) {
-    if (!this.enableHandInteraction || !this.hasHumanoid) return;
+    if (!this.enableHandInteraction || !this.hasHumanoid || this.boundary) return;
     if (side === 'left' && this.leftArmState === 'DRAGGING') {
       this.desiredTargets.left.copy(worldPos);
     } else if (side === 'right' && this.rightArmState === 'DRAGGING') {
@@ -235,6 +257,7 @@ export class AvatarAnimationController {
    * Handle user releasing the dragged hand.
    */
   endDrag(side) {
+    if (this.boundary) return;
     if (side === 'left') {
       if (this.holdPose) {
         this.leftArmState = 'HELD';
@@ -323,6 +346,21 @@ export class AvatarAnimationController {
    * @param {number} elapsedTime - Total elapsed time in seconds
    */
   update(delta, elapsedTime) {
+    delta = Math.min(Math.max(delta, 0), .05); // A hidden tab cannot jump through a constrained pose.
+    this.frameDelta = delta;
+    this.elapsedTime = elapsedTime;
+    if (this.boundary) {
+      const age = this.boundary.age += delta;
+      if (age >= this.boundary.profile.duration) {
+        if (!this.boundarySpeechActive || age >= 16) this.boundary.returnStart ??= age;
+        this.animationState = this.boundary.returnStart === undefined ? 'BOUNDARY_RESPONSE' : 'RETURN_TO_IDLE';
+        if (this.boundary.returnStart !== undefined && age - this.boundary.returnStart >= .8) {
+          this.boundary = null;
+          this.vrm?.scene.position.copy(this.sceneRestPosition);
+        }
+      } else this.animationState = 'BOUNDARY_RESPONSE';
+    }
+    if (!this.boundary) this.animationState = this.leftArmState === 'DRAGGING' || this.rightArmState === 'DRAGGING' ? 'USER_INTERACTION' : this.activeGestureKey && this.conversationState === 'SPEAKING' ? 'GESTURING' : ['LISTENING', 'THINKING', 'SPEAKING'].includes(this.conversationState) ? this.conversationState : 'IDLE';
     if (this.speechPulse > 0) {
       this.speechPulse = Math.max(0, this.speechPulse - delta * 4.0);
     }
@@ -338,6 +376,7 @@ export class AvatarAnimationController {
 
     // 4. Update Head & Neck Procedural Motion
     this.updateHead(delta, elapsedTime);
+    if (this.vrm?.lookAt && !this.boundary) this.vrm.lookAt.lookAt(this.eyeTarget);
 
     // 5. Update Facial Expressions (Visemes & Blinking)
     this.updateExpressions(delta, elapsedTime);
@@ -353,7 +392,7 @@ export class AvatarAnimationController {
    * Priority: Dragging > Held Pose > Speech Gesture > Idle Rest
    */
   updateArmTargets(delta, elapsedTime) {
-    const isSpeaking = this.conversationState === 'SPEAKING' && this.enableSpeakingGestures;
+    const isSpeaking = !this.boundary && this.conversationState === 'SPEAKING' && this.enableSpeakingGestures;
     if (isSpeaking) {
       this.timeSpeaking += delta;
       this.gestureTimer += delta;
@@ -404,40 +443,61 @@ export class AvatarAnimationController {
     }
 
     // Smooth exponential damping toward desired targets (prevents rubber/jelly snapping)
-    const dampingRate = this.leftArmState === 'DRAGGING' ? 24 : 10;
+    this.collision?.update();
+    for (const side of ['left', 'right']) if (this.collision) this.collision.constrainTarget(side, this.desiredTargets[side], this.safeTargets[side]);
+    const dampingRate = this.leftArmState === 'DRAGGING' ? 16 : 7;
     const alphaLeft = 1 - Math.exp(-dampingRate * delta);
-    this.currentTargets.left.lerp(this.desiredTargets.left, alphaLeft);
+    this.currentTargets.left.lerp(this.collision ? this.safeTargets.left : this.desiredTargets.left, alphaLeft);
 
-    const dampingRateRight = this.rightArmState === 'DRAGGING' ? 24 : 10;
+    const dampingRateRight = this.rightArmState === 'DRAGGING' ? 16 : 7;
     const alphaRight = 1 - Math.exp(-dampingRateRight * delta);
-    this.currentTargets.right.lerp(this.desiredTargets.right, alphaRight);
+    this.currentTargets.right.lerp(this.collision ? this.safeTargets.right : this.desiredTargets.right, alphaRight);
   }
 
   /**
    * Executes 2-bone analytical IK solver on both arms.
    */
   solveArms() {
-    // Solve Left Arm
-    const leftChain = {
-      side: 'left',
-      upperArm: this.bones.leftUpperArm,
-      lowerArm: this.bones.leftLowerArm,
-      hand: this.bones.leftHand,
-      shoulder: this.bones.leftShoulder,
-    };
-    const leftResult = this.ikSolver.solve(leftChain, this.currentTargets.left, this.poleVectors.left);
-    this.onReachLimitChange('left', !leftResult.reached);
+    if (!this.collision) return;
+    this.collision.update();
+    for (const side of ['left', 'right']) {
+      const chain = this.chains[side]; if (!chain) continue;
+      this.collision.constrainTarget(side, this.currentTargets[side], this.safeTargets[side]);
+      let result, accepted = false;
+      // Reject unsafe solved segments, then retreat toward the calibrated rest pose.
+      // Never change joint translations, scales or skin weights to reach a target.
+      for (let attempt = 0; attempt < 7; attempt++) {
+        this.candidate.copy(this.safeTargets[side]).lerp(this.restTargets[side], attempt / 6);
+        result = this.ikSolver.solve(chain, this.candidate, this.poleVectors[side]);
+        if (this.collision.armPenetration(side) <= .001) { accepted = true; break; }
+      }
+      if (accepted) {
+        const keep = Math.exp(-14 * (this.frameDelta || 1 / 60));
+        chain.upperArm.quaternion.slerp(chain.safeRotations[0], keep); chain.lowerArm.quaternion.slerp(chain.safeRotations[1], keep);
+        if (chain.shoulder) chain.shoulder.quaternion.slerp(chain.safeRotations[2], keep);
+        chain.upperArm.updateWorldMatrix(true, true);
+        if (this.collision.armPenetration(side) > .001) accepted = false;
+      }
+      if (accepted) {
+        chain.safeRotations[0].copy(chain.upperArm.quaternion); chain.safeRotations[1].copy(chain.lowerArm.quaternion); chain.safeRotations[2]?.copy(chain.shoulder.quaternion);
+        chain.hasSafePose = true;
+      } else if (chain.hasSafePose) {
+        chain.upperArm.quaternion.copy(chain.safeRotations[0]); chain.lowerArm.quaternion.copy(chain.safeRotations[1]);
+        if (chain.shoulder) chain.shoulder.quaternion.copy(chain.safeRotations[2]);
+        chain.upperArm.updateWorldMatrix(true, true);
+      }
+      chain.hand.getWorldPosition(this.safeTargets[side]);
+      this.onReachLimitChange(side, !result?.reached || this.safeTargets[side].distanceTo(this.currentTargets[side]) > .025 || this[side + 'ArmState'] === 'DRAGGING' && this.safeTargets[side].distanceTo(this.desiredTargets[side]) > .06);
+      this.collision.update();
+    }
+  }
 
-    // Solve Right Arm
-    const rightChain = {
-      side: 'right',
-      upperArm: this.bones.rightUpperArm,
-      lowerArm: this.bones.rightLowerArm,
-      hand: this.bones.rightHand,
-      shoulder: this.bones.rightShoulder,
-    };
-    const rightResult = this.ikSolver.solve(rightChain, this.currentTargets.right, this.poleVectors.right);
-    this.onReachLimitChange('right', !rightResult.reached);
+  beginBoundary(avatarId = 'default') {
+    if (!this.vrm || this.boundary) return false;
+    this.resetPose(); this.activeGestureKey = null;
+    this.boundary = { start: this.elapsedTime, age: 0, profile: BOUNDARY_PROFILES[avatarId] || BOUNDARY_PROFILES.default };
+    this.animationState = 'BOUNDARY_RESPONSE';
+    return true;
   }
 
   /**
@@ -450,6 +510,11 @@ export class AvatarAnimationController {
     this.bones.spine.rotation.x = this.enableIdleAnimation ? chestPitch : 0;
     // Breathing rotates joints; it never alters bone rest translations.
     if (this.spineRestPosition) this.bones.spine.position.copy(this.spineRestPosition);
+    if (this.boundary && this.sceneRestPosition) {
+      const age = this.boundary.age;
+      const envelope = this.boundary.returnStart === undefined ? Math.min(1, age / .4) : Math.max(0, 1 - (age - this.boundary.returnStart) / .8);
+      this.vrm.scene.position.z = this.sceneRestPosition.z - .045 * envelope;
+    }
   }
 
   /**
@@ -461,6 +526,15 @@ export class AvatarAnimationController {
     const targetRot = getHeadRotations(this.conversationState, elapsedTime, this.speechPulse);
     const motion = this.avatarPersonality?.motion ?? 1;
     targetRot.pitch *= motion; targetRot.yaw *= motion; targetRot.roll *= motion;
+    if (this.boundary) {
+      const { profile, age } = this.boundary;
+      const progress = Math.min(1, age / profile.duration);
+      targetRot.pitch = .012; targetRot.roll = 0;
+      targetRot.yaw = Math.sin(age * Math.PI * 2 * profile.frequency) * profile.amplitude * Math.sin(Math.PI * progress);
+    }
+    targetRot.pitch = THREE.MathUtils.clamp(targetRot.pitch, -.22, .22);
+    targetRot.yaw = THREE.MathUtils.clamp(targetRot.yaw, -.3, .3);
+    targetRot.roll = THREE.MathUtils.clamp(targetRot.roll, -.12, .12);
     const alpha = 1 - Math.exp(-12 * delta);
 
     this.currentHeadRot.pitch += (targetRot.pitch - this.currentHeadRot.pitch) * alpha;
@@ -548,6 +622,9 @@ export class AvatarAnimationController {
       setExpression('neutral', relaxedLevel);
       setExpression('relaxed', relaxedLevel);
     }
+    const firm = this.boundary ? this.boundary.profile.expression : 0;
+    if (this.boundary) { setExpression('happy', 0); setExpression('relaxed', 0); }
+    setExpression('angry', firm);
 
     // vrm.update() applies expressions once per frame.
   }

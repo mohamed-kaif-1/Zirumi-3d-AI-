@@ -2,6 +2,7 @@ import { createVoiceController } from './voiceController.js';
 import { createSpeechController } from './speechController.js';
 import { avatarVoiceId } from './avatarVoiceProfiles.js';
 import { LANGUAGES, loadConversationLanguage, saveConversationLanguage } from './languages.js';
+import { boundaryPhrase } from './boundaryBehavior.js';
 
 export const CONVERSATION_STATES = ['IDLE', 'LISTENING', 'TRANSCRIBING', 'THINKING', 'SPEAKING', 'ERROR'];
 
@@ -24,6 +25,8 @@ export function recentHistory(messages) {
 export function createConversationController({ env = globalThis, onChange, initialAvatarId = 'default' }) {
   let disposed = false, request = null, sequence = 0, resetting = false;
   let voiceEpoch = 0;
+  let boundaryTimer = null, boundaryEpoch = 0;
+  function clearBoundaryDeadline() { boundaryEpoch++; env.clearTimeout(boundaryTimer); boundaryTimer = null; }
   let snapshot = { language: loadConversationLanguage(env), state: 'IDLE', messages: [], error: '', memoryNotice: '', connection: 'unchecked', model: '', voice: null, speech: null, avatarId: avatarVoiceId(initialAvatarId), avatarSwitching: false };
   const publish = (patch = {}) => {
     snapshot = { ...snapshot, ...patch };
@@ -73,6 +76,7 @@ export function createConversationController({ env = globalThis, onChange, initi
     const text = rawText.trim();
     if (!text || text.length > 4000) { publish({ error: 'Please enter between 1 and 4,000 characters.' }); refreshState(); return false; }
     const history = recentHistory(snapshot.messages);
+    clearBoundaryDeadline();
     speaker.cancel();
     microphone.reset();
     healthVersion++;
@@ -120,6 +124,7 @@ export function createConversationController({ env = globalThis, onChange, initi
     refreshState();
   }
   function interrupt() {
+    clearBoundaryDeadline();
     cancelRequest();
     microphone.cancel();
     speaker.cancel();
@@ -132,6 +137,20 @@ export function createConversationController({ env = globalThis, onChange, initi
       speaker.setLanguage(value); microphone.setLanguage(value); checkConnection();
     },
     submit, checkConnection, cancelRequest, interrupt, getSnapshot: () => snapshot,
+    respondToBoundary() {
+      if (disposed || snapshot.avatarSwitching) return false;
+      interrupt();
+      const started = speaker.speak(boundaryPhrase(snapshot.language), { boundary: true, avatarId: snapshot.avatarId });
+      if (started) {
+        const epoch = boundaryEpoch;
+        boundaryTimer = env.setTimeout(() => {
+          if (!disposed && epoch === boundaryEpoch && snapshot.speech?.boundaryActive) {
+            speaker.cancel(); publish({ error: 'Boundary speech timed out. The refusal is still shown.' }); refreshState();
+          }
+        }, 15000);
+      }
+      return started;
+    },
     retry() {
       const failed = snapshot.messages.at(-1);
       return failed?.role === 'user' && failed.status === 'failed' ? submit(failed.text, 'typed', failed) : Promise.resolve(false);
@@ -178,6 +197,7 @@ export function createConversationController({ env = globalThis, onChange, initi
     subscribeSpeechBoundary: (fn) => speaker.subscribeBoundary(fn),
     subscribeSpeechAmplitude: (fn) => speaker.subscribeAmplitude(fn),
     dispose() {
+      clearBoundaryDeadline();
       disposed = true;
       healthAbort?.abort();
       cancelRequest();
