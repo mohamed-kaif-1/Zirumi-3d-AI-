@@ -1,0 +1,10 @@
+{
+  "name": "ZIRUMI — Your World. Your Companion.",
+  "short_name": "ZIRUMI",
+  "description": "Speak. Connect. Interact. Your personal 3D AI companion studio.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0A14",
+  "theme_color": "#0B0A14",
+  "icons": [{ "src": "/zirumi-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
