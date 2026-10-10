@@ -3,9 +3,29 @@ import assert from 'node:assert/strict';
 import { createConversationController, recentHistory } from '../src/conversationController.js';
 import { createSpeechController } from '../src/speechController.js';
 import { mouthOpenForState } from '../src/avatarAnimation.js';
+import { LANGUAGE_STORAGE_KEY, LANGUAGES, loadConversationLanguage, conversationWelcome } from '../src/languages.js';
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const ok = (body) => ({ ok: true, json: async () => body });
+test('saved language survives controller recreation and configures recording and chat before the first turn', async () => {
+  const data = new Map(), f = browserFixture();
+  f.env.localStorage = { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) };
+  const first = createConversationController({ env: f.env, onChange() {} }); first.setLanguage('hi-IN'); first.dispose();
+  assert.equal(data.get(LANGUAGE_STORAGE_KEY), 'hi-IN');
+  const second = createConversationController({ env: f.env, onChange() {} }); second.setVoiceEnabled(false);
+  assert.equal(second.getSnapshot().language, 'hi-IN'); assert.equal(second.getSnapshot().voice.provider, 'Sarvam');
+  await second.submit('नमस्ते'); const body = JSON.parse(f.requests.filter(r => r.url === '/api/chat').at(-1).options.body); assert.equal(body.language, 'hi-IN');
+  second.setLanguage('auto'); assert.equal(second.getSnapshot().language, 'hi-IN'); assert.equal(data.get(LANGUAGE_STORAGE_KEY), 'hi-IN'); second.dispose();
+});
+test('invalid or blocked storage cannot select unsupported languages and every character has a native greeting', () => {
+  assert.equal(loadConversationLanguage({ localStorage: { getItem: () => 'constructor' } }), 'en');
+  const blocked = { get localStorage() { throw new Error('Storage unavailable'); } }; assert.equal(loadConversationLanguage(blocked), 'en');
+  const f = browserFixture(); Object.defineProperty(f.env, 'localStorage', { get() { throw new Error('blocked'); } });
+  const controller = createConversationController({ env: f.env, onChange() {} }); controller.setLanguage('ta-IN'); assert.equal(controller.getSnapshot().language, 'ta-IN'); controller.dispose();
+  for (const language of ['ta-IN', 'hi-IN']) for (const id of ['default', 'sky', 'nova', 'ember']) {
+    const welcome = conversationWelcome(language, { id, greeting: 'English greeting', prompts: [] }); assert.equal(welcome.greeting, LANGUAGES[language].sample[id]); assert.equal(welcome.prompts.length, 3);
+  }
+});
 test('language switching cancels an old reply, retains completed history and sends the selected native route once', async () => {
   const f = browserFixture(); let finish;
   f.env.fetch = async (url, options) => {

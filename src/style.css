@@ -357,3 +357,23 @@ select { width: 100%; min-width: 0; background: #211A2D; color: #E5DDEF; border:
 .memory-list li span { min-width: 0; }
 .memory-confirm { padding: 12px; border: 1px solid rgba(240,166,190,.25); border-radius: 12px; font-size: 12px; }
 .memory-confirm button + button { margin-left: 16px; }
+.main-settings-button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: #211a2e; color: #e7dff3; font: inherit; font-size: 11px; min-height: 40px; }
+.conversation-language-settings { border: 1px solid rgba(var(--accent-rgb),.3); border-radius: 14px; padding: 16px; background: rgba(var(--accent-rgb),.045); }
+.conversation-language-settings h3 { font-size: 15px; margin: 0 0 12px; }
+.conversation-language-settings select { width: 100%; }
+.conversation-language-settings p { font-size: 11px; line-height: 1.65; color: #bfb2ce; margin: 12px 0 0; }
+.conversation-language-settings .language-routing-note { color: #d3c4e4; }
+.conversation-language-bar { padding: 3px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.conversation-language-bar button { min-height: 30px; }
+.voice-language-link { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.voice-language-link>span { display: block; color: #bfb2ce; font-size: 11px; line-height: 1.6; }
+@media (max-width: 800px) {
+  .conversation-language-bar { padding-left: 15px; padding-right: 15px; }
+  .chat-panel:not(.chat-expanded) { height: 221px; }
+  .chat-panel:not(.chat-expanded):has(.playback-row) { height: 247px; }
+  .avatar-panel { height: calc(100svh - 324px); }
+  .main-settings-button { padding: 9px 8px; font-size: 10px; gap: 5px; }
+}
+@media (max-width: 420px) {
+  .topbar { gap: 4px; }
+}

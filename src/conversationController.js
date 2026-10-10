@@ -1,7 +1,7 @@
 import { createVoiceController } from './voiceController.js';
 import { createSpeechController } from './speechController.js';
 import { avatarVoiceId } from './avatarVoiceProfiles.js';
-import { LANGUAGES } from './languages.js';
+import { LANGUAGES, loadConversationLanguage, saveConversationLanguage } from './languages.js';
 
 export const CONVERSATION_STATES = ['IDLE', 'LISTENING', 'TRANSCRIBING', 'THINKING', 'SPEAKING', 'ERROR'];
 
@@ -24,7 +24,7 @@ export function recentHistory(messages) {
 export function createConversationController({ env = globalThis, onChange, initialAvatarId = 'default' }) {
   let disposed = false, request = null, sequence = 0, resetting = false;
   let voiceEpoch = 0;
-  let snapshot = { language: 'en', state: 'IDLE', messages: [], error: '', memoryNotice: '', connection: 'unchecked', model: '', voice: null, speech: null, avatarId: avatarVoiceId(initialAvatarId), avatarSwitching: false };
+  let snapshot = { language: loadConversationLanguage(env), state: 'IDLE', messages: [], error: '', memoryNotice: '', connection: 'unchecked', model: '', voice: null, speech: null, avatarId: avatarVoiceId(initialAvatarId), avatarSwitching: false };
   const publish = (patch = {}) => {
     snapshot = { ...snapshot, ...patch };
     if (!disposed && !resetting) onChange(snapshot);
@@ -43,6 +43,7 @@ export function createConversationController({ env = globalThis, onChange, initi
   const speaker = createSpeechController({ env, initialAvatarId, onChange: (speech) => { snapshot = { ...snapshot, speech }; refreshState(); } });
   const microphone = createVoiceController({ env, onChange: (voice) => { snapshot = { ...snapshot, voice }; refreshState(); }, onTranscript: (text) => submit(text, 'voice') });
   snapshot = { ...snapshot, voice: microphone.getSnapshot(), speech: speaker.getSnapshot() };
+  if (snapshot.language !== 'en') { speaker.setLanguage(snapshot.language); microphone.setLanguage(snapshot.language); }
   let healthAbort = null;
   let healthVersion = 0;
 
@@ -127,7 +128,7 @@ export function createConversationController({ env = globalThis, onChange, initi
   return {
     setLanguage(value) {
       if (!Object.hasOwn(LANGUAGES, value) || value === snapshot.language) return;
-      interrupt(); voiceEpoch++; publish({ language: value, error: '', memoryNotice: '' });
+      interrupt(); voiceEpoch++; saveConversationLanguage(value, env); publish({ language: value, error: '', memoryNotice: '' });
       speaker.setLanguage(value); microphone.setLanguage(value); checkConnection();
     },
     submit, checkConnection, cancelRequest, interrupt, getSnapshot: () => snapshot,

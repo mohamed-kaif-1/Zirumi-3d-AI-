@@ -4,7 +4,7 @@ import { VOICE_LIMITS } from './avatarVoiceProfiles.js';
 import Dialog from './Dialog.jsx';
 import Icon from './Icon.jsx';
 
-export default function VoiceSelector({ selectedPresetId, onSelectPreset, voices = [], selectedVoiceId, selectedVoiceKey, onSelectVoice, isPlayingSample, onPreviewSample, enabled, onToggleEnabled, supported, isOpen = false, onOpenChange, avatarName = 'Aira', profile, pitch = 1, rate = 1, volume = 1, onPitchChange, onRateChange, onVolumeChange, onResetVoice, previewDisabled = false }) {
+export default function VoiceSelector({ selectedPresetId, onSelectPreset, voices = [], selectedVoiceId, selectedVoiceKey, onSelectVoice, isPlayingSample, onPreviewSample, enabled, onToggleEnabled, supported, isOpen = false, onOpenChange, avatarName = 'Aira', profile, pitch = 1, rate = 1, volume = 1, onPitchChange, onRateChange, onVolumeChange, onResetVoice, previewDisabled = false, onOpenLanguageSettings }) {
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
   const provider = ['elevenlabs', 'cartesia', 'sarvam'].includes(profile?.provider);
   const providerName = profile?.provider === 'sarvam' ? 'Sarvam' : profile?.provider === 'cartesia' ? 'Cartesia' : 'ElevenLabs';
@@ -16,6 +16,7 @@ export default function VoiceSelector({ selectedPresetId, onSelectPreset, voices
     </div>
     {isOpen && <Dialog title={`${avatarName}’s voice`} eyebrow="MAKE IT YOURS" onClose={close} className="voice-dialog" style={{ '--accent': profile?.profile?.accent, '--accent-rgb': profile?.profile?.accentRgb }}>
       <div className="voice-dialog-content">
+        <div className="voice-language-link"><span>Choose Tamil, Hindi or English in main Settings.</span><button type="button" className="text-button" onClick={onOpenLanguageSettings}>Conversation Language<Icon name="arrow" size={13} /></button></div>
         <div className="assigned-voice"><span className="assigned-voice-icon"><Icon name="volume" size={22} /></span><div><small>{provider ? `Assigned ${providerName} voice` : 'Browser voice'}</small><strong>{profile?.voiceName || 'Browser default'}</strong></div></div>
         {provider && profile.metadata?.error && <p className="voice-fallback-notice" role="status">This character’s voice is unavailable. Try again after checking voice access.</p>}
         {!provider && <p className="voice-fallback-notice" role="status">Browser speech is active for this character.</p>}

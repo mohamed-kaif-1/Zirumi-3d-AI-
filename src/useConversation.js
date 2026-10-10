@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createConversationController } from './conversationController.js';
+import { loadConversationLanguage } from './languages.js';
 
 const initial = { language: 'en', state: 'IDLE', messages: [], error: '', connection: 'unchecked', model: '', voice: { status: 'idle', permission: 'unknown', engine: 'native', error: '', liveText: '', notice: '', level: 0 }, speech: { supported: true, enabled: true, status: 'idle', selectedVoice: '', voices: [], error: '' } };
 
@@ -7,7 +8,7 @@ export default function useConversation(initialAvatarId = 'default') {
   const controller = useRef(null);
   const subscriptions = useRef({ subscribeSpeechBoundary: new Set(), subscribeSpeechAmplitude: new Set() });
   const initialAvatar = useRef(initialAvatarId);
-  const [conversation, setConversation] = useState(initial);
+  const [conversation, setConversation] = useState(() => ({ ...initial, language: loadConversationLanguage() }));
   useEffect(() => {
     const instance = createConversationController({ onChange: setConversation, initialAvatarId: initialAvatar.current });
     controller.current = instance;

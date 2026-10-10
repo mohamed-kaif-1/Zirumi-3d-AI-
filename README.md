@@ -18,6 +18,13 @@ Setup: [PHASE1_SETUP.md](PHASE1_SETUP.md), [PHASE2_SETUP.md](PHASE2_SETUP.md), a
 [PHASE3_SETUP.md](PHASE3_SETUP.md). Public hosting requirements remain in
 [DEPLOYMENT.md](DEPLOYMENT.md). Earlier migration reports are historical.
 
+Choose **Settings → Conversation Language** for English, Tamil (தமிழ்), Hindi
+(हिन्दी) or Indian English. The choice is saved for your next visit. The
+**Language: …** conversation button and the link in **Voice settings** open the
+same control; **Browser fallback** is a separate voice preference. See
+[LANGUAGE_SELECTOR_FIX_REPORT.md](LANGUAGE_SELECTOR_FIX_REPORT.md) for the
+discoverability repair and fresh Tamil/Hindi browser verification.
+
 ## Run on Windows
 
 Use Node.js 22.12+ in the existing nested application directory:

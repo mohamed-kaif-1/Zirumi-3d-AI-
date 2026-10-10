@@ -1,5 +1,17 @@
 # ZIRUMI Phase 3 — 2026-10-10
 
+**2026-10-11 follow-up:** The original language selector was below animation
+preferences behind an icon-only main Settings button, separate from Voice
+settings, and its choice did not persist after refresh. The repair now puts
+**Conversation Language** first under a visibly labelled **Settings** button,
+adds conversation/voice-settings shortcuts, persists the locale and localizes
+character welcomes. Fresh real Tamil/Hindi speech conversations, all four native
+voice previews and 320/390/1440-pixel UI checks passed. The current test suite has
+139 passing tests; lint and build pass. See
+[LANGUAGE_SELECTOR_FIX_REPORT.md](LANGUAGE_SELECTOR_FIX_REPORT.md) for scope and
+evidence. The original Phase 3 results below are historical provider checks,
+not evidence of the former selector's discoverability or refresh persistence.
+
 **PHASE PASSED — automated mandatory functional checks**  
 **ZIRUMI READY FOR FINAL TESTING — local application**
 

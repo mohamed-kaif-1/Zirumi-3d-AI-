@@ -1,4 +1,4 @@
-import { LANGUAGES } from './languages.js';
+import { LANGUAGES, conversationWelcome } from './languages.js';
 import { useEffect, useRef, useState } from 'react';
 import { getCharacterPersonality } from './characterPersonalities.js';
 import Icon from './Icon.jsx';
@@ -10,10 +10,12 @@ export function userNotice(message) {
   return message;
 }
 
-export default function ConversationPanel({ character, currentAvatar, messages, scrollRef, echo, liveText, thinking, processing, captureBusy, playing, starting, listening, error, draft, setDraft, sendTyped, toggleMic, voiceControls, chatExpanded, setChatExpanded, inputRef, reducedMotion }) {
+export default function ConversationPanel({ character, currentAvatar, messages, scrollRef, echo, liveText, thinking, processing, captureBusy, playing, starting, listening, error, draft, setDraft, sendTyped, toggleMic, voiceControls, chatExpanded, setChatExpanded, inputRef, reducedMotion, onOpenLanguageSettings }) {
   const [copied, setCopied] = useState(null);
   const [copyError, setCopyError] = useState('');
   const copyTimer = useRef(null);
+  const language = LANGUAGES[echo.language || 'en'];
+  const welcome = conversationWelcome(echo.language || 'en', { ...character, id: currentAvatar.id === 'custom' ? 'default' : currentAvatar.id });
   useEffect(() => () => clearTimeout(copyTimer.current), []);
   async function copy(message) {
     try { await navigator.clipboard.writeText(message.text); setCopied(message.id); setCopyError(''); clearTimeout(copyTimer.current); copyTimer.current = setTimeout(() => setCopied(null), 2000); }
@@ -27,10 +29,11 @@ export default function ConversationPanel({ character, currentAvatar, messages, 
       <MemoryControls />
       <button type="button" className="icon-button" aria-label="Clear conversation" title="Clear conversation" onClick={() => { echo.clear(); setDraft(''); setCopyError(''); }} disabled={!messages.length && !error && !captureBusy && !playing && !thinking}><Icon name="trash" size={17} /></button>
     </header>
+    <div className="conversation-language-bar"><button type="button" className="text-button" onClick={onOpenLanguageSettings} aria-label={`Conversation Language: ${language.shortLabel}`}><Icon name="settings" size={13} /><span>Language: {language.shortLabel}</span><Icon name="chevron" size={12} /></button></div>
     <div id="conversation-log" className="chat-log" ref={scrollRef} role="log" aria-live="polite" aria-relevant="additions text">
       {!messages.length && !liveText && !thinking && <div className="conversation-empty">
-        <div className="empty-symbol"><Icon name="sparkle" size={25} /></div><span className="eyebrow">HELLO, YOU.</span><h2>{character.greeting}</h2><p>What’s on your mind?</p>
-        <div className="conversation-prompts">{character.prompts.map(text => <button type="button" key={text} onClick={() => prompt(text)} disabled={captureBusy}><span>{text}</span><Icon name="arrow" size={14} /></button>)}</div>
+        <div className="empty-symbol"><Icon name="sparkle" size={25} /></div><span className="eyebrow">{welcome.hello}</span><h2>{welcome.greeting}</h2><p>{welcome.question}</p>
+        <div className="conversation-prompts">{welcome.prompts.map(text => <button type="button" key={text} onClick={() => prompt(text)} disabled={captureBusy}><span>{text}</span><Icon name="arrow" size={14} /></button>)}</div>
       </div>}
       {messages.map(message => {
         const sender = getCharacterPersonality(message.avatarId);
