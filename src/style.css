@@ -381,3 +381,9 @@ select { width: 100%; min-width: 0; background: #211A2D; color: #E5DDEF; border:
 .character-interact-button { pointer-events: auto; display: inline-flex; align-items: center; gap: 7px; min-height: 34px; margin-bottom: 7px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 10px; font: inherit; font-size: 11px; color: #d3c4e4; background: #211a2e; }
 .character-interact-button.active { border-color: var(--accent); color: var(--accent); }
 .boundary-notice { max-width: 350px; margin: 0 0 8px; font-size: 12px; line-height: 1.5; color: #f0dbe6; padding: 8px 12px; border-radius: 10px; background: rgba(25,18,32,.92); }
+
+.animation-debug { position: absolute; z-index: 30; top: 90px; right: 12px; max-width: 290px; max-height: 75%; overflow: auto; padding: 12px; background: #111827ee; border: 1px solid #567; border-radius: 10px; font-size: 11px; color: #e8edf6; }
+.animation-debug pre { white-space: pre-wrap; font-size: 10px; }
+.animation-debug label { display: block; margin: 7px 0; }
+.animation-debug select, .animation-debug input[type=number] { width: 100%; color: #e8edf6; background: #202b40; padding: 4px; }
+.animation-debug button { margin: 4px; padding: 6px; }

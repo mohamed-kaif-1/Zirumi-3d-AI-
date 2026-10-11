@@ -16,6 +16,8 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
   let disposed = false, active = null, nextId = 0;
   const globalBoundaryListeners = new Set();
   const amplitudeListeners = new Set();
+  const playbackListeners = new Set();
+  let playback = null;
   let ttsStatus = null;
   let language = 'en', metadataVersion = 0;
   const cloudProvider = id => language !== 'en' ? 'sarvam' : ttsStatus?.provider === 'Cartesia' ? 'cartesia' : ttsStatus?.provider === 'Browser' ? 'browser' : isElevenLabsAvatar(id) || Boolean(ttsStatus?.avatars?.[id]?.voiceId) ? 'elevenlabs' : 'browser';
@@ -50,7 +52,7 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
       ttsStatus.avatars[id] = { ...ttsStatus.avatars[id], available: true, synthesisVerified: true, playbackError: false, synthesisError: false, error: '' };
       update({ ...profileSnapshot(), ...patch });
     } else update(patch);
-  }, onAmplitude: emitAmplitude,
+  }, onAmplitude: emitAmplitude, onPlayback: value => { playback = value; for (const fn of playbackListeners) fn(value); },
     onFailure: message => {
       const replay = fallbackReplay; fallbackReplay = null;
       if (disposed || !replay) return;
@@ -198,6 +200,8 @@ export function createSpeechController({ env = globalThis, onChange, initialAvat
     setLangFilter(lang) { cancel(); update({ langFilter: lang || 'all' }); },
     subscribeBoundary(fn) { globalBoundaryListeners.add(fn); return () => globalBoundaryListeners.delete(fn); },
     subscribeAmplitude(fn) { amplitudeListeners.add(fn); fn(['elevenlabs', 'cartesia', 'sarvam'].includes(snapshot.playbackEngine) ? 0 : null); return () => amplitudeListeners.delete(fn); },
-    dispose() { disposed = true; metadataAbort.abort(); cancel(); audioPlayer.dispose(); synth?.removeEventListener('voiceschanged', onVoices); globalBoundaryListeners.clear(); amplitudeListeners.clear(); },
+    subscribePlayback(fn) { playbackListeners.add(fn); fn(playback); return () => playbackListeners.delete(fn); },
+    pause() { audioPlayer.pause(); }, resume() { return audioPlayer.resume(); },
+    dispose() { disposed = true; metadataAbort.abort(); cancel(); audioPlayer.dispose(); synth?.removeEventListener('voiceschanged', onVoices); globalBoundaryListeners.clear(); amplitudeListeners.clear(); playbackListeners.clear(); },
   };
 }

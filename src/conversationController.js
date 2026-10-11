@@ -196,6 +196,12 @@ export function createConversationController({ env = globalThis, onChange, initi
     },
     subscribeSpeechBoundary: (fn) => speaker.subscribeBoundary(fn),
     subscribeSpeechAmplitude: (fn) => speaker.subscribeAmplitude(fn),
+    subscribeSpeechPlayback: (fn) => speaker.subscribePlayback(fn),
+    testSpeech() {
+      interrupt();
+      const text = snapshot.language === 'ta-IN' ? 'வணக்கம்! மூன்று முக்கிய படிகள் உள்ளன. ஒன்றாக முயற்சி செய்யலாம்.' : snapshot.language === 'hi-IN' ? 'नमस्ते! तीन मुख्य कदम हैं। हम मिलकर कोशिश कर सकते हैं।' : 'Hello! There are three main steps. Absolutely, let us do it together!';
+      return speaker.speak(text, { manual: true });
+    },
     dispose() {
       clearBoundaryDeadline();
       disposed = true;

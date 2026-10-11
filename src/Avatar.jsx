@@ -8,6 +8,8 @@ import { AvatarAnimationController } from './AvatarAnimationController.js';
 import HandHandle from './HandHandle.jsx';
 import CharacterInteraction from './CharacterInteraction.jsx';
 import { mouthOpenForState } from './avatarAnimation.js';
+import AnimationDebugPanel from './AnimationDebugPanel.jsx';
+import CollisionProxyPreview from './CollisionProxyPreview.jsx';
 
 // Recognized 3D demo avatar fallback before importing a VRM.
 function PlaceholderAvatar({ conversationState }) {
@@ -243,6 +245,8 @@ const Avatar = forwardRef(function Avatar(
     conversationState = 'IDLE',
     subscribeSpeechBoundary,
     subscribeSpeechAmplitude,
+    subscribeSpeechPlayback,
+    onTestSpeech,
     enableHandInteraction = true,
     holdPose = false,
     enableSpeakingGestures = true,
@@ -283,6 +287,7 @@ const Avatar = forwardRef(function Avatar(
     });
   }
   const controller = controllerRef.current;
+  const diagnosticsEnabled = import.meta.env.DEV && new URLSearchParams(window.location.search).get('animationDebug') === '1';
 
   // Sync props to controller
   useEffect(() => {
@@ -334,6 +339,7 @@ const Avatar = forwardRef(function Avatar(
   useEffect(() => {
     return subscribeSpeechAmplitude?.(value => controller.setSpeechAmplitude(value));
   }, [controller, subscribeSpeechAmplitude]);
+  useEffect(() => subscribeSpeechPlayback?.(playback => controller.setSpeechPlayback(playback)), [controller, subscribeSpeechPlayback]);
 
   // Expose resetPose method to parent component
   useImperativeHandle(
@@ -347,7 +353,7 @@ const Avatar = forwardRef(function Avatar(
   );
 
   return (
-    <Canvas camera={{ position: [0, 1.42, 2.3], fov: 36 }} dpr={[1, 1.5]} gl={{ alpha: true, antialias: true }}>
+    <><Canvas camera={{ position: [0, 1.42, 2.3], fov: 36 }} dpr={[1, 1.5]} gl={{ alpha: true, antialias: true }}>
       <ambientLight intensity={0.65} />
       <hemisphereLight args={['#f1eaff', '#333048', 0.8]} />
       <directionalLight intensity={1.5} color="#fff2e8" position={[2.5, 5, 3]} />
@@ -381,7 +387,8 @@ const Avatar = forwardRef(function Avatar(
         target={[0, 1.25, 0]}
       />
       <CharacterInteraction controller={controller} enabled={interactionMode} avatarId={avatarId} onBoundary={onBoundary} orbitControlsRef={orbitControlsRef} />
-    </Canvas>
+      {diagnosticsEnabled && <CollisionProxyPreview controller={controller} />}
+    </Canvas>{diagnosticsEnabled && <AnimationDebugPanel controller={controller} avatarId={avatarId} onTestSpeech={onTestSpeech} />}</>
   );
 });
 

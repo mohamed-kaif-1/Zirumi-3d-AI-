@@ -2,6 +2,7 @@ import { ApiError } from '../errors.js';
 import { validateTtsRequest, MAX_TTS_AUDIO } from '../tts.js';
 import { CHARACTER_PERSONALITIES } from '../../src/characterPersonalities.js';
 import { speechRequest, readProviderBytes, readProviderJson } from './speechHttp.js';
+import { readCartesiaAlignment } from './cartesiaAlignment.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMOTION = { default: 'content', sky: 'happy', nova: 'calm', ember: 'confident' };
@@ -40,7 +41,7 @@ export function createCartesiaProvider({ apiKey = '', model = 'sonic-3.6', versi
     if (!loading) loading = refresh().then(result => { cache = result; expires = now() + (Object.values(result.avatars).every(a => a.available) ? 300_000 : 15_000); return result; }).finally(() => { loading = null; });
     return loading;
   }
-  async function synthesize(body, { signal } = {}) {
+  async function synthesize(body, { signal, alignment: requestAlignment = false } = {}) {
     const input = validateTtsRequest(body), started = now();
     if (signal?.aborted) throw new ApiError(504, 'Cartesia speech synthesis was cancelled.');
     const config = registry[input.avatarId];
@@ -50,15 +51,16 @@ export function createCartesiaProvider({ apiKey = '', model = 'sonic-3.6', versi
     if (signal?.aborted) throw new ApiError(504, 'Cartesia speech synthesis was cancelled.');
     if (!verified.has(input.avatarId)) throw new ApiError(503, cache.avatars[input.avatarId].error || 'Cartesia voice verification failed.');
     try {
-      const audio = await speechRequest('https://api.cartesia.ai/tts/bytes', { provider: 'Cartesia', apiKey, headers: { ...headers, 'Content-Type': 'application/json', Accept: 'audio/wav' }, body: JSON.stringify({ model_id: model, transcript: input.text, voice: config.voiceId, locale: 'en', output_format: { container: 'wav', encoding: 'pcm_s16le', sample_rate: 44100 }, generation_config: { speed: input.rate, volume: 1, emotion: ['calm', 'gentle'].includes(input.presetId) ? 'calm' : EMOTION[input.avatarId] } }), fetchImpl, signal, consume: async response => {
+      const result = await speechRequest('https://api.cartesia.ai/tts/' + (requestAlignment ? 'sse' : 'bytes'), { provider: 'Cartesia', apiKey, headers: { ...headers, 'Content-Type': 'application/json', Accept: requestAlignment ? 'text/event-stream' : 'audio/wav' }, body: JSON.stringify({ model_id: model, transcript: input.text, voice: config.voiceId, locale: 'en', output_format: { container: requestAlignment ? 'raw' : 'wav', encoding: 'pcm_s16le', sample_rate: 44100 }, ...(requestAlignment ? { add_timestamps: true, add_phoneme_timestamps: true } : {}), generation_config: { speed: input.rate, volume: 1, emotion: ['calm', 'gentle'].includes(input.presetId) ? 'calm' : EMOTION[input.avatarId] } }), fetchImpl, signal, consume: async response => {
+        if (requestAlignment) return readCartesiaAlignment(response);
         if (!/^audio\/(?:wav|wave|x-wav)(?:;|$)/i.test(response.headers.get('content-type') || '')) throw new ApiError(502, 'Cartesia did not return WAV audio.');
         const bytes = normalizeGeneratedWav(await readProviderBytes(response, MAX_TTS_AUDIO));
         validateGeneratedWav(bytes);
-        return bytes;
+        return { audio: bytes, alignment: null };
       } });
       synthesized.add(input.avatarId); synthesisErrors.delete(input.avatarId);
       Object.assign(cache.avatars[input.avatarId], { synthesisVerified: true, available: true, synthesisError: false, error: '' }); cache.modelVerified = true;
-      return { audio, mimeType: 'audio/wav', voiceId: config.voiceId, model, metadata: { provider: 'Cartesia', model, latencyMs: Math.max(0, now() - started) } };
+      return { ...result, mimeType: 'audio/wav', voiceId: config.voiceId, model, metadata: { provider: 'Cartesia', model, latencyMs: Math.max(0, now() - started) } };
     } catch (error) { synthesisErrors.set(input.avatarId, error); Object.assign(cache.avatars[input.avatarId], { available: false, synthesisError: true, error: error instanceof ApiError ? error.message : 'Cartesia speech failed.' }); throw error; }
   }
   return { status, synthesize };

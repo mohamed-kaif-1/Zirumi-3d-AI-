@@ -73,6 +73,7 @@ export class BlinkController {
     this.blinkDuration = 0.16;
     this.timeUntilNextBlink = 3.0;
     this.currentWeight = 0;
+    this.doubleBlink = false;
   }
 
   update(delta) {
@@ -92,7 +93,8 @@ export class BlinkController {
       if (this.timeUntilNextBlink <= 0) {
         this.blinkTimeRemaining = this.blinkDuration;
         // Natural irregular interval: 2.5 to 5.5 seconds between blinks
-        this.timeUntilNextBlink = 2.5 + Math.random() * 3.0;
+        this.timeUntilNextBlink = this.doubleBlink ? .28 : 2.5 + Math.random() * 3.0;
+        this.doubleBlink = !this.doubleBlink && Math.random() < .12;
       }
     }
     return this.currentWeight;

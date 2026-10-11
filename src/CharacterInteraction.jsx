@@ -6,7 +6,7 @@ import { DeliberateInteraction } from './boundaryBehavior.js';
 export default function CharacterInteraction({ controller, enabled, avatarId, onBoundary, orbitControlsRef }) {
   const { gl, camera } = useThree();
   const latest = useRef({ enabled, avatarId, onBoundary }); latest.current = { enabled, avatarId, onBoundary };
-  useFrame(() => camera.getWorldPosition(controller.eyeTarget));
+  useFrame(() => camera.getWorldPosition(controller.gazeCameraTarget));
   useEffect(() => {
     const canvas = gl.domElement, policy = new DeliberateInteraction(), raycaster = new Raycaster(), pointer = new Vector2();
     const envelope = new Sphere(new Vector3(0, .9, 0), 1.9), inverse = new Matrix4();

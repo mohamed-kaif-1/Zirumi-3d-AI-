@@ -104,9 +104,13 @@ export function createTranscriptionServer({ apiKey = process.env.GROQ_API_KEY, b
         regional = selectedLanguage !== 'en';
         provider = regional ? 'Sarvam' : ttsProvider === 'cartesia' ? 'Cartesia' : ttsProvider === 'browser' ? 'Browser' : 'ElevenLabs';
         requestModel = regional ? sarvam.status(selectedLanguage).model : ttsProvider === 'cartesia' ? cartesiaModel : ttsModel || 'eleven_multilingual_v2';
-        const result = await (regional ? sarvam : tts).synthesize({ ...input, ...(regional ? { language: selectedLanguage } : {}) }, { signal: abort.signal });
+        const alignedResponse = request.headers.accept === 'application/vnd.zirumi.speech+json';
+        const result = await (regional ? sarvam : tts).synthesize({ ...input, ...(regional ? { language: selectedLanguage } : {}) }, { signal: abort.signal, alignment: alignedResponse });
         logger({ event: 'ai_request', requestId, kind, provider, model: result.model, status: 200, latencyMs: Math.max(0, now() - started) });
-        if (!response.destroyed) response.writeHead(200, { 'Content-Type': result.mimeType || 'audio/mpeg', 'Content-Length': result.audio.length, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Echo-Voice-Id': result.voiceId, 'X-Echo-Tts-Model': result.model, 'X-Zirumi-Tts-Provider': provider }).end(result.audio);
+        if (!response.destroyed) {
+          const payload = alignedResponse ? Buffer.from(JSON.stringify({ audio: result.audio.toString('base64'), mimeType: result.mimeType || 'audio/mpeg', alignment: result.alignment || null, provider, model: result.model })) : result.audio;
+          response.writeHead(200, { 'Content-Type': alignedResponse ? 'application/json' : result.mimeType || 'audio/mpeg', 'Content-Length': payload.length, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Echo-Voice-Id': result.voiceId, 'X-Echo-Tts-Model': result.model, 'X-Zirumi-Tts-Provider': provider }).end(payload);
+        }
         return;
       }
       if (isChat) {

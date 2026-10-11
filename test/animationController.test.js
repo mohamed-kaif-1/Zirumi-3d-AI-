@@ -141,13 +141,14 @@ test('Reset pose restores arms to resting pose and clears held targets', () => {
   assert.equal(controller.userPosedTargets.right, null);
 });
 
-test('Speaking opens mouth smoothly and idle closes mouth', () => {
+test('Speaking with measured sound opens mouth smoothly and idle closes mouth', () => {
   const controller = new AvatarAnimationController();
   const vrm = createMockVRM();
   controller.setVRM(vrm);
 
   controller.setConversationState('SPEAKING');
   controller.onSpeechBoundary({ name: 'word' });
+  controller.setSpeechAmplitude(.7);
 
   // Advance several frames
   for (let i = 0; i < 15; i++) controller.update(0.016, i * 0.016);
@@ -175,6 +176,8 @@ test('switching rigs clears held targets and old bone references while keeping s
   assert.equal(controller.userPosedTargets.left, null);
   assert.equal(controller.conversationState, 'SPEAKING');
   controller.update(0.016, 1);
+  assert.equal(second._expressions.aa, 0, 'a new rig must not inherit old speech motion');
+  controller.setSpeechAmplitude(.6); controller.update(.016, 1.016);
   assert.ok(second._expressions.aa > 0);
 });
 
@@ -198,6 +201,7 @@ test('calm motion is restrained and personality changes preserve held hands and 
     controller.activeVoicePreset = controller.avatarPersonality.preset;
     controller.setConversationState('SPEAKING');
     controller.activeGestureKey = Object.keys(controller.gestureTargets).find(key => controller.gestureTargets[key].arm === 'right');
+    controller.setSpeechAmplitude(.7);
     for (let i = 0; i < 10; i++) controller.update(1 / 60, 0.3 + i / 60);
     measurements[id] = {
       handMotion: controller.desiredTargets.right.distanceTo(controller.restTargets.right),
@@ -236,4 +240,15 @@ test('audio-driven mouth follows amplitude and silence without procedural oscill
   controller.setSpeechAmplitude(1); controller.setConversationState('IDLE');
   for (let i = 0; i < 30; i++) controller.update(1 / 60, 3 + i / 60);
   assert.ok(vrm._expressions.aa < 0.001);
+});
+test('diagnostics report real slow-frame FPS while arm interpolation remains bounded', () => {
+  const c = new AvatarAnimationController(); c.setVRM(createMockVRM());
+  for (let i = 0; i < 150; i++) c.update(.2, i * .2);
+  assert.ok(Math.abs(c.diagnostics.fps - 5) < .01); assert.equal(c.frameDelta, .05);
+});
+test('speech gesture duration uses the audio position despite sparse rendering frames', () => {
+  const c = new AvatarAnimationController(); c.setVRM(createMockVRM()); let position = .2;
+  c.setSpeechPlayback({ text: 'Hello!', read: () => ({ position, state: 'playing' }) }); c.setConversationState('SPEAKING'); c.triggerGesture('FRIENDLY_WAVE');
+  position = 1.2; c.update(.2, 1.2); assert.ok(Math.abs(c.gestureAge - 1) < .00001);
+  position = 4; c.update(.2, 4); assert.equal(c.activeGestureKey, null);
 });
